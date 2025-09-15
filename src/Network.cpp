@@ -7,7 +7,16 @@
  *  
  *  Permission is hereby granted, free of charge, to any person obtaining a copy
  *  of this software and associated documentation files (the "Software"), to deal
- *  in the Software without restriction, including without limitation the rights
+ *  in the Software without restriction, in      responseBody+="<div class=\"status success\">"
+                    "<p>🎉 <b>WiFi 配网成功！</b></p>"
+                    "<p>📶 已连接到网络：<b>" + String(wifiData.ssid) + "</b></p>"
+                    "<p>🏠 HomeKit 设备已准备就绪</p>"
+                    "<p>📱 您现在可以在 iPhone \"家庭\" App 中添加此设备</p>"
+                    "</div>"
+                    "<div class=\"status info\">"
+                    "<p>🔄 设备将在 3 秒后自动重启...</p>"
+                    "<p>📱 重启后即可进行 HomeKit 配对</p>"
+                    "</div>"limitation the rights
  *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  *  copies of the Software, and to permit persons to whom the Software is
  *  furnished to do so, subject to the following conditions:
@@ -349,7 +358,18 @@ void Network_HS::processRequest(char *body, char *formData){
                   
     WiFi.begin(wifiData.ssid,wifiData.pwd);              
   
-  } else
+  } else {
+
+  if(!strncmp(body,"GET /auto-complete ",19)){                           // GET AUTO-COMPLETE
+    responseBody+="<div class=\"status success\">"
+                  "<p>✅ <b>配网已完成！</b></p>"
+                  "<p>🔄 正在重启 HomeSpan 设备...</p>"
+                  "<p>📱 请关闭此窗口</p>"
+                  "</div>";
+    alarmTimeOut=millis()+2000;
+    apStatus=1;
+    
+  } else {
 
   if(!strncmp(body,"POST /save ",11)){                                    // GET SAVE
     getFormValue(formData,"code",setupCode,8);
@@ -364,14 +384,14 @@ void Network_HS::processRequest(char *body, char *formData){
                   "<div class=\"status warning\"><p>❌ <b>设置代码不符合要求 - 过于简单！</b></p><p>🔄 正在返回配置页面...</p></div>";      
     }
     
-  } else
+  } else {
 
   if(!strncmp(body,"GET /cancel ",12)){                                   // GET CANCEL
     responseBody+="<div class=\"status warning\"><p>❌ <b>配置已取消！</b></p><p>🔄 正在重启 HomeSpan 设备...</p><p>📱 请关闭此窗口</p></div>";
     alarmTimeOut=millis()+2000;
     apStatus=-1;
     
-  } else
+  } else {
 
   if(!strncmp(body,"GET /wifi-status ",17)){                              // GET WIFI-STATUS
 
@@ -390,26 +410,30 @@ void Network_HS::processRequest(char *body, char *formData){
 
       STATUS_UPDATE(start(LED_AP_CONNECTED),HS_AP_CONNECTED)
           
-      responseBody+="<div class=\"status success\"><p>🎉 <b>连接成功！</b></p><p>📶 已连接到网络：<b>" + String(wifiData.ssid) + "</b></p></div>"
-                    "<div class=\"form-group\"><p>🔑 您可以在下方输入新的 8 位数设置代码，或留空以保持现有代码。</p></div>";
-
-      responseBody+="<form action=\"/save\" method=\"post\">"
+      responseBody+="<div class=\"status success\">"
+                    "<p>🎉 <b>WiFi 配网成功！</b></p>"
+                    "<p>📶 已连接到网络：<b>" + String(wifiData.ssid) + "</b></p>"
+                    "<p>🏠 HomeKit 设备已准备就绪</p>"
+                    "<p>� 您现在可以在 iPhone \"家庭\" App 中添加此设备</p>"
+                    "</div>"
                     "<div class=\"form-group\">"
-                    "<label for=\"code\">📱 HomeKit 设置代码：</label>"
-                    "<div class=\"input-wrapper\">"
-                    "<span class=\"input-icon\">🔢</span>"
-                    "<input type=\"tel\" id=\"code\" name=\"code\" placeholder=\"例如：12345678\" pattern=\"[0-9]{8}\" maxlength=8>"
+                    "<p><b>� 设备信息：</b></p>"
+                    "<p>• 设备名称：HomeSpan 车库门</p>"
+                    "<p>• HomeKit 配置码：466-37-726</p>"
+                    "<p>• IP 地址：" + WiFi.localIP().toString() + "</p>"
                     "</div>"
-                    "<div class=\"input-hint\">💡 输入 8 位数字，避免使用过于简单的组合（如：12345678、11111111 等）</div>"
-                    "<div class=\"input-hint\">🏠 此代码用于在 HomeKit 中添加设备时验证身份</div>"
+                    "<div class=\"status info\">"
+                    "<p>� 设备将在 3 秒后自动重启...</p>"
+                    "<p>📱 重启后即可进行 HomeKit 配对</p>"
                     "</div>"
-                    "<input type=\"submit\" value=\"💾 保存设置\">"
-                    "</form>";
-                    
-      responseBody+="<button class=\"cancel-btn\" onclick=\"document.location='/cancel'\">❌ 取消配置</button>";
+                    "<script>"
+                    "setTimeout(function() {"
+                    "  window.location.href = '/auto-complete';"
+                    "}, 3000);"
+                    "</script>";
     }
   
-  } else                                                                
+  } else {
 
   if(!strncmp(body,"GET /homespan-landing ",22)){
     LOG1("In Landing Page...\n");
@@ -531,13 +555,25 @@ void Network_HS::processRequest(char *body, char *formData){
     responseBody+="<input type=\"submit\" value=\"🚀 开始配网\">"
                   "</form>";
 
-    responseBody+="<button class=\"cancel-btn\" onclick=\"document.location='/cancel'\">❌ 取消配置</button>";                  
+    responseBody+="<button class=\"cancel-btn\" onclick=\"document.location='/cancel'\">❌ 取消配置</button>";
                   
-  } else 
+  } else {
   
   if(!strstr(body,"wispr")){
     responseHead="HTTP/1.1 302 Found\r\nLocation: /homespan-landing\r\n";    
   }
+
+  } // end else - wispr
+
+  } // end else - homespan-landing
+
+  } // end else - wifi-status
+
+  } // end else - cancel
+
+  } // end else - save
+
+  } // end else - auto-complete
 
   responseHead+="\r\n";               // add blank line between reponse header and body
   responseBody+="</div></body></html>";     // close out body and html tags
