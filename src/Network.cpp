@@ -7,7 +7,16 @@
  *  
  *  Permission is hereby granted, free of charge, to any person obtaining a copy
  *  of this software and associated documentation files (the "Software"), to deal
- *  in the Software without restriction, including without limitation the rights
+ *  in the Software without restriction, in      responseBody+="<div class=\"status success\">"
+                    "<p>🎉 <b>WiFi 配网成功！</b></p>"
+                    "<p>📶 已连接到网络：<b>" + String(wifiData.ssid) + "</b></p>"
+                    "<p>🏠 HomeKit 设备已准备就绪</p>"
+                    "<p>📱 您现在可以在 iPhone \"家庭\" App 中添加此设备</p>"
+                    "</div>"
+                    "<div class=\"status info\">"
+                    "<p>🔄 设备将在 3 秒后自动重启...</p>"
+                    "<p>📱 重启后即可进行 HomeKit 配对</p>"
+                    "</div>"limitation the rights
  *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  *  copies of the Software, and to permit persons to whom the Software is
  *  furnished to do so, subject to the following conditions:
@@ -242,14 +251,92 @@ void Network_HS::processRequest(char *body, char *formData){
   
   String responseHead="HTTP/1.1 200 OK\r\nContent-type: text/html\r\n";
   
-  String responseBody="<html><meta charset=\"utf-8\"><head><style>"
-                        "p{font-size:300%; margin:1em}"
-                        "label{font-size:300%; margin:1em}"
-                        "input{font-size:250%; margin:1em}"
-                        "button{font-size:250%; margin:1em}"
+  String responseBody="<html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\"><head><title>HomeSpan 配网设置</title><style>"
+                        "* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }"
+                        "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0; padding: 10px; min-height: 100vh; overflow-x: hidden; }"
+                        ".container { max-width: 500px; width: 100%; margin: 0 auto; background: rgba(255, 255, 255, 0.95); border-radius: 15px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); backdrop-filter: blur(10px); }"
+                        ".header { text-align: center; margin-bottom: 25px; }"
+                        ".header h1 { color: #4a5568; font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); line-height: 1.2; }"
+                        ".header .subtitle { color: #718096; font-size: clamp(0.9rem, 3vw, 1.1rem); margin-top: 8px; }"
+                        "p { font-size: clamp(1rem, 3.5vw, 1.2rem); margin: 12px 0; color: #2d3748; line-height: 1.5; }"
+                        "label { display: block; font-size: clamp(1.1rem, 4vw, 1.3rem); margin: 18px 0 8px 0; color: #2d3748; font-weight: 600; position: relative; }"
+                        ".input-wrapper { position: relative; margin-bottom: 15px; }"
+                        ".input-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: clamp(1rem, 3.5vw, 1.2rem); color: #a0aec0; z-index: 1; pointer-events: none; }"
+                        "input[type='text'], input[type='password'], input[type='tel'] { width: 100%; padding: 16px 12px 16px 40px; font-size: clamp(1rem, 4vw, 1.2rem); border: 2px solid #e2e8f0; border-radius: 12px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); background: #ffffff; position: relative; z-index: 0; -webkit-appearance: none; appearance: none; }"
+                        "input[type='text']:focus, input[type='password']:focus, input[type='tel']:focus { border-color: #667eea; outline: none; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1), 0 4px 12px rgba(102, 126, 234, 0.15); transform: translateY(-1px); }"
+                        "input[type='text']:focus + .input-icon, input[type='password']:focus + .input-icon, input[type='tel']:focus + .input-icon { color: #667eea; }"
+                        "input[type='text']::placeholder, input[type='password']::placeholder, input[type='tel']::placeholder { color: #a0aec0; font-style: italic; }"
+                        "input[type='text']:valid, input[type='password']:valid, input[type='tel']:valid { border-color: #48bb78; }"
+                        "input[type='text']:invalid:not(:placeholder-shown), input[type='password']:invalid:not(:placeholder-shown), input[type='tel']:invalid:not(:placeholder-shown) { border-color: #f56565; }"
+                        ".input-hint { font-size: clamp(0.8rem, 2.5vw, 0.9rem); color: #718096; margin-top: 5px; display: flex; align-items: center; line-height: 1.4; }"
+                        ".input-hint.error { color: #e53e3e; }"
+                        ".input-hint.success { color: #38a169; }"
+                        "datalist { background: white; border: 1px solid #e2e8f0; border-radius: 8px; }"
+                        "input[type='submit'], button { width: 100%; background: linear-gradient(45deg, #667eea, #764ba2); color: white; border: none; padding: 16px 20px; font-size: clamp(1.1rem, 4vw, 1.3rem); border-radius: 12px; cursor: pointer; margin: 12px 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 600; position: relative; overflow: hidden; touch-action: manipulation; -webkit-appearance: none; }"
+                        "input[type='submit']:hover, button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4); }"
+                        "input[type='submit']:active, button:active { transform: translateY(0px); transition: transform 0.1s; }"
+                        "input[type='submit']::before, button::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transition: left 0.5s; }"
+                        "input[type='submit']:hover::before, button:hover::before { left: 100%; }"
+                        ".cancel-btn { background: linear-gradient(45deg, #f56565, #e53e3e) !important; margin-top: 8px; }"
+                        ".status { text-align: center; padding: 18px; border-radius: 12px; margin: 18px 0; }"
+                        ".success { background: linear-gradient(135deg, #c6f6d5, #9ae6b4); color: #22543d; border: 2px solid #68d391; }"
+                        ".warning { background: linear-gradient(135deg, #fed7d7, #fc8181); color: #742a2a; border: 2px solid #f56565; }"
+                        ".info { background: linear-gradient(135deg, #bee3f8, #90cdf4); color: #2a4365; border: 2px solid #63b3ed; }"
+                        ".loading { background: linear-gradient(135deg, #e2e8f0, #cbd5e0); color: #4a5568; border: 2px solid #a0aec0; }"
+                        ".form-group { margin-bottom: 20px; }"
+                        ".led-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #48bb78; margin-right: 6px; animation: blink 1.5s infinite; box-shadow: 0 0 8px rgba(72, 187, 120, 0.5); }"
+                        "@keyframes blink { 0%, 50% { opacity: 1; box-shadow: 0 0 8px rgba(72, 187, 120, 0.5); } 51%, 100% { opacity: 0.3; box-shadow: 0 0 4px rgba(72, 187, 120, 0.2); } }"
+                        ".progress { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin: 15px 0; box-shadow: inset 0 1px 2px rgba(0,0,0,0.1); }"
+                        ".progress-bar { height: 100%; background: linear-gradient(45deg, #667eea, #764ba2); animation: progress 2s infinite; border-radius: 3px; }"
+                        "@keyframes progress { 0% { width: 0%; } 100% { width: 100%; } }"
+                        ".wifi-strength { display: inline-block; margin-left: 6px; }"
+                        ".strength-bar { display: inline-block; width: 2px; height: 8px; background: #a0aec0; margin: 0 1px; border-radius: 1px; }"
+                        ".strength-bar.active { background: #48bb78; }"
+                        ".wifi-list { max-height: 200px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; background: white; margin-top: 5px; display: none; position: relative; z-index: 10; }"
+                        ".wifi-item { padding: 12px 15px; border-bottom: 1px solid #f7fafc; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; }"
+                        ".wifi-item:last-child { border-bottom: none; }"
+                        ".wifi-item:hover { background: #f7fafc; }"
+                        ".wifi-item.selected { background: #ebf8ff; color: #2b6cb0; }"
+                        ".wifi-name { font-weight: 500; }"
+                        ".wifi-security { font-size: 0.8em; color: #718096; margin-left: 8px; }"
+                        ".manual-input-toggle { color: #667eea; cursor: pointer; text-decoration: underline; font-size: 0.9em; margin-top: 8px; }"
+                        ".network-search { position: relative; }"
+                        ".search-icon { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #a0aec0; cursor: pointer; }"
+                        "input[type='text'].manual-mode { border-color: #f56565; }"
+                        ".input-mode-indicator { font-size: 0.8em; color: #667eea; margin-left: 5px; }"
+                        "@media (max-width: 480px) {"
+                        "  body { padding: 8px; }"
+                        "  .container { padding: 16px; border-radius: 12px; }"
+                        "  .header { margin-bottom: 20px; }"
+                        "  .header h1 { font-size: 1.8rem; }"
+                        "  .header .subtitle { font-size: 0.95rem; }"
+                        "  p { font-size: 1rem; margin: 10px 0; }"
+                        "  label { font-size: 1.1rem; margin: 15px 0 6px 0; }"
+                        "  input[type='text'], input[type='password'], input[type='tel'] { padding: 14px 10px 14px 36px; font-size: 1rem; }"
+                        "  .input-icon { left: 10px; font-size: 1rem; }"
+                        "  input[type='submit'], button { padding: 14px 16px; font-size: 1.1rem; margin: 10px 0; }"
+                        "  .status { padding: 15px; margin: 15px 0; }"
+                        "  .form-group { margin-bottom: 18px; }"
+                        "  .input-hint { font-size: 0.85rem; }"
+                        "}"
+                        "@media (max-width: 320px) {"
+                        "  body { padding: 5px; }"
+                        "  .container { padding: 12px; }"
+                        "  .header h1 { font-size: 1.6rem; }"
+                        "  input[type='text'], input[type='password'], input[type='tel'] { padding: 12px 8px 12px 32px; }"
+                        "  .input-icon { left: 8px; }"
+                        "  input[type='submit'], button { padding: 12px 14px; }"
+                        "}"
+                        "@media (orientation: landscape) and (max-height: 500px) {"
+                        "  body { padding: 5px; }"
+                        "  .container { padding: 15px; }"
+                        "  .header { margin-bottom: 15px; }"
+                        "  .header h1 { font-size: 1.5rem; }"
+                        "  .form-group { margin-bottom: 15px; }"
+                        "  .status { padding: 12px; margin: 12px 0; }"
+                        "}"
                       "</style></head>"
-                      "<body style=\"background-color:lightyellow;\">"
-                      "<center><p><b>HomeSpan Setup</b></p></center>";
+                      "<body><div class=\"container\"><div class=\"header\"><h1>🏠 HomeSpan 配网</h1><div class=\"subtitle\">智能家居设备配置</div></div>";
 
   if(!strncmp(body,"POST /configure ",16) &&                              // POST CONFIGURE
      strstr(body,"Content-Type: application/x-www-form-urlencoded")){     // check that content is from a form
@@ -265,34 +352,46 @@ void Network_HS::processRequest(char *body, char *formData){
     STATUS_UPDATE(start(LED_WIFI_CONNECTING),HS_WIFI_CONNECTING)
         
     responseBody+="<meta http-equiv = \"refresh\" content = \"" + String(homeSpan.wifiTimeCounter/1000) + "; url = /wifi-status\" />"
-                  "<p>Initiating WiFi connection to:</p><p><b>" + String(wifiData.ssid) + "</b></p>"
-                  "<p>(waiting " + String((homeSpan.wifiTimeCounter++)/1000) + " seconds to check for response)</p>";
+                  "<div class=\"status info\"><div class=\"progress\"><div class=\"progress-bar\"></div></div>"
+                  "<p>🔗 正在连接 WiFi 网络：</p><p><b>" + String(wifiData.ssid) + "</b></p>"
+                  "<p>⏱️ 等待连接响应中... (" + String((homeSpan.wifiTimeCounter++)/1000) + " 秒)</p></div>";
                   
     WiFi.begin(wifiData.ssid,wifiData.pwd);              
   
-  } else
+  } else {
+
+  if(!strncmp(body,"GET /auto-complete ",19)){                           // GET AUTO-COMPLETE
+    responseBody+="<div class=\"status success\">"
+                  "<p>✅ <b>配网已完成！</b></p>"
+                  "<p>🔄 正在重启 HomeSpan 设备...</p>"
+                  "<p>📱 请关闭此窗口</p>"
+                  "</div>";
+    alarmTimeOut=millis()+2000;
+    apStatus=1;
+    
+  } else {
 
   if(!strncmp(body,"POST /save ",11)){                                    // GET SAVE
     getFormValue(formData,"code",setupCode,8);
 
     if(allowedCode(setupCode)){
-      responseBody+="<p><b>Settings saved!</b></p><p>Restarting HomeSpan.</p><p>Closing window...</p>";
+      responseBody+="<div class=\"status success\"><p>✅ <b>设置已保存！</b></p><p>🔄 正在重启 HomeSpan 设备...</p><p>📱 请关闭此窗口</p></div>";
       alarmTimeOut=millis()+2000;
       apStatus=1;
       
     } else {
     responseBody+="<meta http-equiv = \"refresh\" content = \"4; url = /wifi-status\" />"
-                  "<p><b>Disallowed Setup Code - too simple!</b></p><p>Returning to configuration page...</p>";      
+                  "<div class=\"status warning\"><p>❌ <b>设置代码不符合要求 - 过于简单！</b></p><p>🔄 正在返回配置页面...</p></div>";      
     }
     
-  } else
+  } else {
 
   if(!strncmp(body,"GET /cancel ",12)){                                   // GET CANCEL
-    responseBody+="<p><b>Configuration Canceled!</b></p><p>Restarting HomeSpan.</p><p>Closing window...</p>";
+    responseBody+="<div class=\"status warning\"><p>❌ <b>配置已取消！</b></p><p>🔄 正在重启 HomeSpan 设备...</p><p>📱 请关闭此窗口</p></div>";
     alarmTimeOut=millis()+2000;
     apStatus=-1;
     
-  } else
+  } else {
 
   if(!strncmp(body,"GET /wifi-status ",17)){                              // GET WIFI-STATUS
 
@@ -300,29 +399,35 @@ void Network_HS::processRequest(char *body, char *formData){
 
     if(WiFi.status()!=WL_CONNECTED){
       responseHead+="Refresh: " + String(homeSpan.wifiTimeCounter/1000) + "\r\n";     
-      responseBody+="<p>Re-initiating connection to:</p><p><b>" + String(wifiData.ssid) + "</b></p>";
-      responseBody+="<p>(waiting " + String((homeSpan.wifiTimeCounter++)/1000) + " seconds to check for response)</p>";
-      responseBody+="<p>Access Point termination in " + String((alarmTimeOut-millis())/1000) + " seconds.</p>";
-      responseBody+="<center><button onclick=\"document.location='/hotspot-detect.html'\">Cancel</button></center>";
+      responseBody+="<div class=\"status loading\"><div class=\"progress\"><div class=\"progress-bar\"></div></div>"
+                    "<p>🔄 重新尝试连接到：</p><p><b>" + String(wifiData.ssid) + "</b></p>"
+                    "<p>⏱️ 等待连接响应中... (" + String((homeSpan.wifiTimeCounter++)/1000) + " 秒)</p>"
+                    "<p>⏰ 配网超时倒计时：" + String((alarmTimeOut-millis())/1000) + " 秒</p>"
+                    "<button class=\"cancel-btn\" onclick=\"document.location='/hotspot-detect.html'\">取消配网</button></div>";
       WiFi.begin(wifiData.ssid,wifiData.pwd);
       
     } else {
 
       STATUS_UPDATE(start(LED_AP_CONNECTED),HS_AP_CONNECTED)
           
-      responseBody+="<p>SUCCESS! Connected to:</p><p><b>" + String(wifiData.ssid) + "</b></p>";
-      responseBody+="<p>You may enter new 8-digit Setup Code below, or leave blank to retain existing code.</p>";
-
-      responseBody+="<form action=\"/save\" method=\"post\">"
-                    "<label for=\"code\">Setup Code:</label>"
-                    "<center><input size=\"32\" type=\"tel\" id=\"code\" name=\"code\" placeholder=\"12345678\" pattern=\"[0-9]{8}\" maxlength=8></center>"
-                    "<center><input style=\"font-size:300%\" type=\"submit\" value=\"SAVE Settings\"></center>"
-                    "</form>";
-                    
-      responseBody+="<center><button style=\"font-size:300%\" onclick=\"document.location='/cancel'\">CANCEL Configuration</button></center>";
+      responseBody+="<div class=\"status success\">"
+                    "<p>🎉 <b>WiFi 配网成功！</b></p>"
+                    "<p>📶 已连接到网络：<b>" + String(wifiData.ssid) + "</b></p>"
+                    "<p>🏠 HomeKit 设备已准备就绪</p>"
+                    "<p>📱 您现在可以在 iPhone \"家庭\" App 中添加此设备</p>"
+                    "</div>"
+                    "<div class=\"status info\">"
+                    "<p> 设备将在 3 秒后自动重启...</p>"
+                    "<p>📱 重启后即可进行 HomeKit 配对</p>"
+                    "</div>"
+                    "<script>"
+                    "setTimeout(function() {"
+                    "  window.location.href = '/auto-complete';"
+                    "}, 3000);"
+                    "</script>";
     }
   
-  } else                                                                
+  } else {
 
   if(!strncmp(body,"GET /homespan-landing ",22)){
     LOG1("In Landing Page...\n");
@@ -330,34 +435,142 @@ void Network_HS::processRequest(char *body, char *formData){
     STATUS_UPDATE(start(LED_AP_CONNECTED),HS_AP_CONNECTED)
     homeSpan.wifiTimeCounter.reset();
 
-    responseBody+="<p>Welcome to HomeSpan! This page allows you to configure the above HomeSpan device to connect to your WiFi network.</p>"
-                  "<p>The LED on this device should be <em>double-blinking</em> during this configuration.</p>"
-                  "<form action=\"/configure\" method=\"post\">"
-                  "<label for=\"ssid\">WiFi Network:</label>"
-                  "<center><input size=\"32\" list=\"network\" name=\"network\" placeholder=\"Choose or Type\" required maxlength=" + String(MAX_SSID) + "></center>"
-                  "<datalist id=\"network\">";
-
-    for(int i=0;i<numSSID;i++)
-        responseBody+="<option value=\"" + String(ssidList[i]) + "\">" + String(ssidList[i]) + "</option>";  
-    
-    responseBody+="</datalist><br><br>"
-                  "<label for=\"pwd\">WiFi Password:</label>"
-                  "<center><input size=\"32\" type=\"password\" id=\"pwd\" name=\"pwd\" required maxlength=" + String(MAX_PWD) + "></center>"
-                  "<br><br>";
+    responseBody+="<div class=\"status info\">"
+                  "<p>🎯 <b>欢迎使用 HomeSpan！</b></p>"
+                  "<p>📡 此页面用于配置您的 HomeSpan 设备连接到 WiFi 网络。</p>"
+                  "<p><span class=\"led-indicator\"></span>配置过程中，设备指示灯应该呈现<em>双闪烁</em>状态。</p>"
+                  "</div>";
                   
-    responseBody+="<center><input style=\"font-size:300%\" type=\"submit\" value=\"SUBMIT\"></center>"
+    responseBody+="<form action=\"/configure\" method=\"post\">"
+                  "<div class=\"form-group\">"
+                  "<label for=\"network\">📶 选择 WiFi 网络：</label>"
+                  "<div class=\"network-search\">"
+                  "<div class=\"input-wrapper\">"
+                  "<span class=\"input-icon\">📡</span>"
+                  "<input type=\"text\" name=\"network\" id=\"network\" placeholder=\"点击选择网络或手动输入\" required maxlength=" + String(MAX_SSID) + " autocomplete=\"off\" onclick=\"toggleWifiList()\" oninput=\"filterWifiList()\">"
+                  "<span class=\"search-icon\" onclick=\"toggleManualMode()\">✏️</span>"
+                  "</div>"
+                  "<div class=\"wifi-list\" id=\"wifiList\">";
+
+    for(int i=0;i<numSSID;i++) {
+        responseBody+="<div class=\"wifi-item\" onclick=\"selectWifi('" + String(ssidList[i]) + "')\">";
+        responseBody+="<div><span class=\"wifi-name\">" + String(ssidList[i]) + "</span>";
+        // 这里可以添加安全类型显示，暂时先显示基本信息
+        responseBody+="<span class=\"wifi-security\">🔒 加密</span></div>";
+        responseBody+="<div class=\"wifi-strength\">";
+        // 简单的信号强度显示（可以根据实际RSSI值调整）
+        for(int j=0; j<4; j++) {
+            responseBody+="<span class=\"strength-bar active\"></span>";
+        }
+        responseBody+="</div></div>";
+    }
+    
+    responseBody+="</div>"
+                  "<div class=\"input-hint\">"
+                  "💡 点击上方输入框显示可用网络列表，或 "
+                  "<span class=\"manual-input-toggle\" onclick=\"toggleManualMode()\">手动输入网络名称</span>"
+                  "<span class=\"input-mode-indicator\" id=\"modeIndicator\">（列表模式）</span>"
+                  "</div>"
+                  "</div>"
+                  "<div class=\"form-group\">"
+                  "<label for=\"pwd\">🔐 WiFi 密码：</label>"
+                  "<div class=\"input-wrapper\">"
+                  "<span class=\"input-icon\">🔑</span>"
+                  "<input type=\"password\" id=\"pwd\" name=\"pwd\" placeholder=\"请输入 WiFi 密码\" required maxlength=" + String(MAX_PWD) + ">"
+                  "</div>"
+                  "<div class=\"input-hint\">🔒 密码将使用加密方式安全存储在设备中</div>"
+                  "</div>"
+                  
+                  "<script>"
+                  "let isManualMode = false;"
+                  "let wifiListVisible = false;"
+                  
+                  "function toggleWifiList() {"
+                  "  if (!isManualMode) {"
+                  "    const list = document.getElementById('wifiList');"
+                  "    wifiListVisible = !wifiListVisible;"
+                  "    list.style.display = wifiListVisible ? 'block' : 'none';"
+                  "  }"
+                  "}"
+                  
+                  "function selectWifi(ssid) {"
+                  "  document.getElementById('network').value = ssid;"
+                  "  document.getElementById('wifiList').style.display = 'none';"
+                  "  wifiListVisible = false;"
+                  "  document.getElementById('pwd').focus();"
+                  "}"
+                  
+                  "function toggleManualMode() {"
+                  "  isManualMode = !isManualMode;"
+                  "  const input = document.getElementById('network');"
+                  "  const indicator = document.getElementById('modeIndicator');"
+                  "  const list = document.getElementById('wifiList');"
+                  "  "
+                  "  if (isManualMode) {"
+                  "    input.placeholder = '手动输入网络名称（SSID）';"
+                  "    input.className = 'manual-mode';"
+                  "    indicator.textContent = '（手动模式）';"
+                  "    list.style.display = 'none';"
+                  "    wifiListVisible = false;"
+                  "  } else {"
+                  "    input.placeholder = '点击选择网络或手动输入';"
+                  "    input.className = '';"
+                  "    indicator.textContent = '（列表模式）';"
+                  "  }"
+                  "}"
+                  
+                  "function filterWifiList() {"
+                  "  if (!isManualMode) {"
+                  "    const input = document.getElementById('network');"
+                  "    const filter = input.value.toLowerCase();"
+                  "    const items = document.querySelectorAll('.wifi-item');"
+                  "    "
+                  "    items.forEach(item => {"
+                  "      const name = item.querySelector('.wifi-name').textContent.toLowerCase();"
+                  "      item.style.display = name.includes(filter) ? 'flex' : 'none';"
+                  "    });"
+                  "    "
+                  "    if (filter.length > 0) {"
+                  "      document.getElementById('wifiList').style.display = 'block';"
+                  "      wifiListVisible = true;"
+                  "    }"
+                  "  }"
+                  "}"
+                  
+                  "// 点击页面其他地方时隐藏WiFi列表"
+                  "document.addEventListener('click', function(e) {"
+                  "  if (!e.target.closest('.network-search')) {"
+                  "    document.getElementById('wifiList').style.display = 'none';"
+                  "    wifiListVisible = false;"
+                  "  }"
+                  "});"
+                  "</script>";
+                  
+    responseBody+="<input type=\"submit\" value=\"🚀 开始配网\">"
                   "</form>";
 
-    responseBody+="<center><button style=\"font-size:300%\" onclick=\"document.location='/cancel'\">CANCEL Configuration</button></center>";                  
+    responseBody+="<button class=\"cancel-btn\" onclick=\"document.location='/cancel'\">❌ 取消配置</button>";
                   
-  } else 
+  } else {
   
   if(!strstr(body,"wispr")){
     responseHead="HTTP/1.1 302 Found\r\nLocation: /homespan-landing\r\n";    
   }
 
+  } // end else - wispr
+
+  } // end else - homespan-landing
+
+  } // end else - wifi-status
+
+  } // end else - cancel
+
+  } // end else - save
+
+  } // end else - auto-complete
+
   responseHead+="\r\n";               // add blank line between reponse header and body
-  responseBody+="</body></html>";     // close out body and html tags
+  responseBody+="</div></body></html>";     // close out body and html tags
 
   LOG2("\n>>>>>>>>>> ");
   LOG2(client.remoteIP());
