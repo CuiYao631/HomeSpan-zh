@@ -244,3 +244,5 @@ class hsWatchdogTimer {
   void reset();
   uint16_t getSeconds();
 };
+
+

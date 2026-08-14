@@ -108,6 +108,9 @@ void Span::init(){
   WiFi.persistent(false);                                 // do not permanently store WiFi configuration data
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);              // scan ALL channels - do NOT stop at first SSID match, else you could connect to weaker BSSID
   WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);          // sort scan data by RSSI and connect to strongest BSSID with matching SSID
+
+  WiFi.mode(WIFI_STA);                                    // start up in STA mode, which enables WiFi radio to provide entropy source for random numbers
+  delay(1);                                               // required to yield (prevents crashing)
   
   networkEventQueue=xQueueCreate(10,sizeof(arduino_event_t));             // queue to transmit network events
   
@@ -119,7 +122,7 @@ void Span::init(){
 
 void Span::begin(Category catID, const char *_displayName, const char *_hostNameBase, const char *_modelName){
 
-  loopTaskHandle=xTaskGetCurrentTaskHandle();                 // a roundabout way of getting the current task handle
+  loopTaskHandle=xTaskGetCurrentTaskHandle();                 // get the current task handle
   
   asprintf(&displayName,"%s",_displayName);
   asprintf(&hostNameBase,"%s",_hostNameBase);
@@ -181,7 +184,7 @@ void Span::poll() {
 
 void Span::pollTask() {
 
-  std::unique_lock pollLock(homeSpan.pollMutex);
+  std::unique_lock pollLock(pollMutex);
 
   if(!strlen(category)){
     LOG0("\n** FATAL ERROR: Cannot start homeSpan polling without an initial call to homeSpan.begin()!\n** PROGRAM HALTED **\n\n");
@@ -233,21 +236,20 @@ void Span::pollTask() {
     rescanStatus=RESCAN_RUNNING;
     LOG2("Rescanning %s for potentially better BSSID...\n",network.wifiData.ssid);
     WiFi.scanDelete();
-    STATUS_UPDATE(start(LED_WIFI_SCANNING),HS_WIFI_SCANNING)
+    setStatus(HS_WIFI_SCANNING);
     WiFi.scanNetworks(true, false, false, 300, 0, network.wifiData.ssid, nullptr);     // start scan in background
   }
 
-  arduino_event_t event;
-  if(xQueueReceive(networkEventQueue, &event, (TickType_t)0))
-    networkCallback(event);
-
   char cBuf[65]="-";
-  
   if(!serialInputDisabled && Serial.available()){
     readSerial(cBuf,64);
     processSerialCommand(cBuf);
   }
-
+  
+  arduino_event_t event;
+  while(xQueueReceive(networkEventQueue, &event, (TickType_t)0))
+    networkCallback(event);
+  
   if(hapServer->hasClient()){  
  
     auto it=hapList.emplace(hapList.begin());                                // create new HAPClient connection
@@ -261,15 +263,18 @@ void Span::pollTask() {
     LOG2("\n");
   }
 
+  HS_STATUS triggerStatus=HS_CONNECTED;
   currentClient=hapList.begin();
-  while(currentClient!=hapList.end()){
 
+  while(currentClient!=hapList.end()){
     if(currentClient->client.connected()){                                   // if the client is connected
       if(currentClient->client.available()){                                 // if client has data available
         homeSpan.lastClientIP=currentClient->client.remoteIP().toString();   // store IP Address for web logging
         currentClient->processRequest();                                     // PROCESS HAP REQUEST
         homeSpan.lastClientIP="0.0.0.0";                                     // reset stored IP address to show "0.0.0.0" if homeSpan.getClientIP() is used in any other context 
       }
+      if(currentClient->cPair)
+        triggerStatus=HS_PAIRED;
       currentClient++;
     } else {
       LOG1("** Client #%d DISCONNECTED (%lu sec)\n",currentClient->clientNumber,millis()/1000);
@@ -277,6 +282,9 @@ void Span::pollTask() {
       currentClient=hapList.erase(currentClient);                            // remove HAPClient connection
     }
   }
+
+  if(getStatus().first==triggerStatus)
+    resetStatus();
       
   snapTime=millis();                                     // snap the current time for use in ALL loop routines
   
@@ -293,11 +301,11 @@ void Span::pollTask() {
     ArduinoOTA.handle();
 
   if(controlButton && controlButton->primed())
-    STATUS_UPDATE(start(LED_ALERT),HS_ENTERING_CONFIG_MODE)
+    setStatus(HS_ENTERING_CONFIG_MODE);
   
-  if(controlButton && controlButton->triggered(3000,10000)){
+  if(controlButton && controlButton->triggered(cbComTime,cbResTime)){
     if(controlButton->type()==PushButton::LONG){
-      STATUS_UPDATE(off(),HS_FACTORY_RESET)
+      setStatus(HS_FACTORY_RESET);
       controlButton->wait();
       processSerialCommand("F");        // FACTORY RESET
     } else {
@@ -336,7 +344,7 @@ void Span::commandMode(){
   LOG0("*** COMMAND MODE ***\n\n");
   int mode=1;
   boolean done=false;
-  STATUS_UPDATE(start(500,0.3,mode,1000),static_cast<HS_STATUS>(HS_ENTERING_CONFIG_MODE+mode))
+  setStatus(static_cast<HS_STATUS>(HS_ENTERING_CONFIG_MODE+mode));
   unsigned long alarmTime=millis()+comModeLife;
 
   while(!done){
@@ -345,12 +353,12 @@ void Span::commandMode(){
       mode=1;
       done=true;
     } else
-    if(controlButton->triggered(10,3000)){
+    if(controlButton->triggered(10,cbComTime)){
       if(controlButton->type()==PushButton::SINGLE){
         mode++;
         if(mode==6)
           mode=1;
-        STATUS_UPDATE(start(500,0.3,mode,1000),static_cast<HS_STATUS>(HS_ENTERING_CONFIG_MODE+mode))
+        setStatus(static_cast<HS_STATUS>(HS_ENTERING_CONFIG_MODE+mode));
       } else {
         done=true;
       }
@@ -359,7 +367,7 @@ void Span::commandMode(){
     resetWatchdog();
   } // while
 
-  STATUS_UPDATE(start(LED_ALERT),static_cast<HS_STATUS>(HS_ENTERING_CONFIG_MODE+mode+5))
+  setStatus(static_cast<HS_STATUS>(HS_ENTERING_CONFIG_MODE+mode+5));
   controlButton->wait();
   
   switch(mode){
@@ -455,6 +463,8 @@ void Span::networkCallback(const arduino_event_t &event){
         if(WiFi.scanComplete()>0 && WiFi.BSSIDstr(0)!=WiFi.BSSIDstr() && WiFi.RSSI(0)>=WiFi.RSSI()+rescanThreshold){
           addWebLog(true,"*** Switching to Access Point with stronger RSSI...");
           WiFi.disconnect();
+          delay(10);
+          return;
         } else {
           LOG2("Rescan completed.  No stronger signals found.\n");
           if(rescanPeriodicTime>0){
@@ -710,6 +720,12 @@ void Span::processSerialCommand(const char *c){
       LOG0("\nReset Reason:     %s",Utils::resetReason());
       LOG0("\nMAC Address:      %s",Network.macAddress().c_str());
       LOG0("\nInterface:        %s",ethernetEnabled?"ETHERNET":"WIFI");
+      LOG0("\nLoop Task:        Core-%d, Priority=%d",xTaskGetCoreID(loopTaskHandle),uxTaskPriorityGet(loopTaskHandle));
+      LOG0("\nAuto-Poll Task:   ");
+      if(!pollTaskHandle)
+        LOG0("N/A");
+      else
+        LOG0("Core-%d, Priority=%d",xTaskGetCoreID(pollTaskHandle),uxTaskPriorityGet(pollTaskHandle));
       LOG0("\nDevice Name:      %s\n\n",displayName);
     }
     break;
@@ -755,7 +771,7 @@ void Span::processSerialCommand(const char *c){
     case 'Z': {
       LOG0("Scanning WiFi Networks...\n");
       WiFi.scanDelete();
-      STATUS_UPDATE(start(LED_WIFI_SCANNING),HS_WIFI_SCANNING)
+      setStatus(HS_WIFI_SCANNING);
       int n=WiFi.scanNetworks();
       if(n==0){
         LOG0("No networks found!\n");
@@ -801,21 +817,15 @@ void Span::processSerialCommand(const char *c){
       
       if(webLog.isEnabled && hostName!=NULL)   
         LOG0("Web Logging:       http://%s.local:%d%s\n",hostName,tcpPortNum,webLog.statusURL);
-      LOG0("\nAccessory ID:      ");
-      HAPClient::charPrintRow(HAPClient::accessory.ID,17);
-      LOG0("                               LTPK: ");
-      HAPClient::hexPrintRow(HAPClient::accessory.LTPK,32);
-      LOG0("\n");
 
+      LOG0("\n");
       HAPClient::printControllers();
       LOG0("\n");
 
       for(auto it=hapList.begin(); it!=hapList.end(); ++it){
         LOG0("Client #%d: %s",(*it).clientNumber,(*it).client.remoteIP().toString().c_str());
         if((*it).cPair){
-          LOG0("  ID=");
-          HAPClient::charPrintRow((*it).cPair->getID(),36);
-          LOG0((*it).cPair->isAdmin()?"   (admin)\n":" (regular)\n");
+          LOG0("  ID=%s %s",HAPClient::char2String((*it).cPair->getID(),36).c_str(),(*it).cPair->isAdmin()?"  (admin)\n":"(regular)\n");
         } else {
           LOG0("  (unverified)\n");
         }
@@ -954,7 +964,7 @@ void Span::processSerialCommand(const char *c){
         LOG0("*** Setup Code Unchanged\n");
             
       LOG0("\n*** Restarting...\n\n");
-      STATUS_UPDATE(start(LED_ALERT),HS_AP_TERMINATED)
+      setStatus(HS_AP_TERMINATED);
       reboot();
     }
     break;
@@ -1244,13 +1254,12 @@ void Span::processSerialCommand(const char *c){
     case 'P': {
       
       LOG0("\n*** Pairing Data used for Cloning another Device\n\n");
-      size_t olen;
-      TempBuffer<char> tBuf(256);
-      mbedtls_base64_encode((uint8_t *)tBuf.get(),256,&olen,(uint8_t *)&HAPClient::accessory,sizeof(struct Accessory));
-      LOG0("Accessory data:  %s\n",tBuf.get());
-      for(const auto &cont : HAPClient::controllerList){
-        mbedtls_base64_encode((uint8_t *)tBuf.get(),256,&olen,(uint8_t *)(&cont),sizeof(struct Controller));
-        LOG0("Controller data: %s\n",tBuf.get());        
+      char *buf;
+      LOG0("Accessory data:  %s\n",homeSpan.getPairingInfo(&buf));
+      free(buf);
+      for(auto it=homeSpan.controllerListBegin(); it!=homeSpan.controllerListEnd(); ++it){
+        LOG0("Controller data: %s\n",it->getPairingInfo(&buf));
+        free(buf);
       }
       LOG0("\n*** End Pairing Data\n\n");
     }
@@ -1274,8 +1283,7 @@ void Span::processSerialCommand(const char *c){
         LOG0("\n*** Error in size of Accessory data - cloning cancelled.  Restarting...\n\n");
         reboot();
       } else {
-        HAPClient::charPrintRow(HAPClient::accessory.ID,17);
-        LOG0("\n");
+        LOG0("%s\n",HAPClient::char2String(HAPClient::accessory.ID,17).c_str());
       }
 
       HAPClient::controllerList.clear();
@@ -1295,8 +1303,7 @@ void Span::processSerialCommand(const char *c){
             reboot();
           } else {
             HAPClient::controllerList.push_back(tCont);
-            HAPClient::charPrintRow(tCont.getID(),36);
-            LOG0("\n");
+            LOG0("%s\n",HAPClient::char2String(tCont.getID(),36).c_str());
           }
         }
       }
@@ -1396,21 +1403,82 @@ void Span::getWebLog(void (*f)(const char *, void *), void *user_data){
 
 ///////////////////////////////
 
+std::pair<HS_STATUS,uint32_t> Span::getStatus(){
+
+  std::shared_lock readLock(hsStatusMux);           // wait for mux to be unlocked, or already locked non-exclusively, and then lock *non-exclusively* to prevent another process from writing
+  return{hsStatus, millis()/1000-hsStatusTime};
+}
+
+///////////////////////////////
+
+void Span::resetStatusDuration(){
+
+  std::unique_lock writeLock(hsStatusMux);        // wait for mux to be unlocked and then lock *exclusively* so write can proceed uninterrupted
+  hsStatusTime=esp_timer_get_time()/1e6;          // reset status time to current time
+}
+
+///////////////////////////////
+
+void Span::setStatus(HS_STATUS hst){
+
+  std::unique_lock writeLock(hsStatusMux);          // wait for mux to be unlocked and then lock *exclusively* so write can proceed uninterrupted
+
+  switch(hst){
+    case HS_WIFI_NEEDED: statusLED->start(300,0.5,1,2700); break;                 // slow single-blink
+    case HS_WIFI_CONNECTING: statusLED->start(2000); break;                       // slow flashing
+    case HS_ETH_CONNECTING: statusLED->start(2000); break;                        // slow flashing
+    case HS_PAIRING_NEEDED: statusLED->start(300,0.5,2,2400); break;              // slow double-blink
+    case HS_PAIRED: statusLED->start(300,0.5,2,2400,true); break;                 // inverted slow double-blink
+    case HS_CONNECTED: statusLED->on(); break;                                    // ON
+    case HS_ENTERING_CONFIG_MODE: statusLED->start(100); break;                   // rapid flashing
+    case HS_CONFIG_MODE_EXIT: statusLED->start(500,0.3,1,1000); break;            // fast 1x blink
+    case HS_CONFIG_MODE_REBOOT: statusLED->start(500,0.3,2,1000); break;          // fast 2x blink
+    case HS_CONFIG_MODE_LAUNCH_AP: statusLED->start(500,0.3,3,1000); break;       // fast 3x blink
+    case HS_CONFIG_MODE_UNPAIR: statusLED->start(500,0.3,4,1000); break;          // fast 4x blink
+    case HS_CONFIG_MODE_ERASE_WIFI: statusLED->start(500,0.3,5,1000); break;      // fast 5x blink  
+    case HS_CONFIG_MODE_EXIT_SELECTED: statusLED->start(100); break;              // rapid flashing
+    case HS_CONFIG_MODE_REBOOT_SELECTED: statusLED->start(100); break;            // rapid flashing
+    case HS_CONFIG_MODE_LAUNCH_AP_SELECTED: statusLED->start(100); break;         // rapid flashing
+    case HS_CONFIG_MODE_UNPAIR_SELECTED: statusLED->start(100); break;            // rapid flashing
+    case HS_CONFIG_MODE_ERASE_WIFI_SELECTED: statusLED->start(100); break;        // rapid flashing
+    case HS_REBOOTING: statusLED->off(); break;                                   // OFF
+    case HS_FACTORY_RESET: statusLED->off(); break;                               // OFF
+    case HS_AP_STARTED: homeSpan.statusLED->start(100,0.5,2,300); break;          // rapid double-blink
+    case HS_AP_CONNECTED: homeSpan.statusLED->start(300,0.5,2,400); break;        // medium double-blink
+    case HS_AP_TERMINATED: statusLED->start(100); break;                          // rapid flashing
+    case HS_OTA_STARTED: homeSpan.statusLED->start(300,0.5,3,400); break;         // medium triple-blink
+    case HS_WIFI_SCANNING: homeSpan.statusLED->start(300,0.8,3,400); break;       // long triple-blink
+    default: return;                                                              // ignore unknown status type - should not occur                                                             
+  }
+
+  hsStatus=hst;                             // save new status
+  hsStatusTime=esp_timer_get_time()/1e6;    // save timestamp (in seconds) of status change
+
+  writeLock.unlock();                       // unlock before calling optional callback
+
+  if(statusCallback)                        // call optional user callback if defined
+    statusCallback(hsStatus);
+}
+
+///////////////////////////////
+
 void Span::resetStatus(){
   if(!ethernetEnabled && strlen(network.wifiData.ssid)==0)
-    STATUS_UPDATE(start(LED_WIFI_NEEDED),HS_WIFI_NEEDED)
+    setStatus(HS_WIFI_NEEDED);
   else if(!(connected%2))
-    STATUS_UPDATE(start(LED_WIFI_CONNECTING),ethernetEnabled?HS_ETH_CONNECTING:HS_WIFI_CONNECTING)
+    setStatus(ethernetEnabled?HS_ETH_CONNECTING:HS_WIFI_CONNECTING);
   else if(!HAPClient::nAdminControllers())
-    STATUS_UPDATE(start(LED_PAIRING_NEEDED),HS_PAIRING_NEEDED)
+    setStatus(HS_PAIRING_NEEDED);
+  else if(std::find_if(hapList.begin(),hapList.end(),[](HAPClient &client)->boolean{return(client.cPair!=NULL);})==hapList.end())
+    setStatus(HS_PAIRED);
   else
-    STATUS_UPDATE(on(),HS_PAIRED)
+    setStatus(HS_CONNECTED);
 }
 
 ///////////////////////////////
 
 void Span::reboot(){
-  STATUS_UPDATE(off(),HS_REBOOTING)
+  setStatus(HS_REBOOTING);
   delay(1000);
   ESP.restart();  
 }
@@ -1419,11 +1487,13 @@ void Span::reboot(){
 
 const char* Span::statusString(HS_STATUS s){
   switch(s){
+    case HS_INITIAL_SETUP: return("HomeSpan Initializing");
     case HS_WIFI_NEEDED: return("WiFi Credentials Needed");
     case HS_WIFI_CONNECTING: return("WiFi Connecting");
     case HS_ETH_CONNECTING: return("Ethernet Connecting");
     case HS_PAIRING_NEEDED: return("Device not yet Paired");
-    case HS_PAIRED: return("Device Paired");
+    case HS_PAIRED: return("Paired and waiting for HomeKit");
+    case HS_CONNECTED: return("Device is Connected to HomeKit");
     case HS_ENTERING_CONFIG_MODE: return("Entering Command Mode");
     case HS_CONFIG_MODE_EXIT: return("1. Exit Command Mode"); 
     case HS_CONFIG_MODE_REBOOT: return("2. Reboot Device");
@@ -1934,6 +2004,16 @@ boolean Span::updateDatabase(boolean updateMDNS){
   }    
 
   return(changed);
+}
+
+///////////////////////////////
+
+const char *Span::getPairingInfo(char **buf){
+  size_t olen;
+  TempBuffer<char> tBuf(256);
+  mbedtls_base64_encode((uint8_t *)tBuf.get(),256,&olen,(uint8_t *)&HAPClient::accessory,sizeof(struct Accessory));
+  asprintf(buf,tBuf.get());
+  return(*buf);
 }
 
 ///////////////////////////////
@@ -2895,7 +2975,7 @@ void SpanOTA::start(){
   LOG0("\n*** Current Partition: %s\n*** New Partition: %s\n*** OTA Starting..",
     esp_ota_get_running_partition()->label,esp_ota_get_next_update_partition(NULL)->label);
   otaPercent=0;
-  STATUS_UPDATE(start(LED_OTA_STARTED),HS_OTA_STARTED)
+  homeSpan.setStatus(HS_OTA_STARTED);
 }
 
 ///////////////////////////////

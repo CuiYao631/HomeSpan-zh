@@ -148,7 +148,7 @@ Pixel *Pixel::setTiming(float high0, float low0, float high1, float low1, uint32
 
 ///////////////////
 
-void Pixel::set(Color *c, size_t nPixels, boolean multiColor){
+void Pixel::transmit(const Color *c, size_t nPixels, boolean multiColor){
 
   if(channel<0 || nPixels==0)
     return;
@@ -202,10 +202,14 @@ Dot::Dot(uint8_t dataPin, uint8_t clockPin){
 
 ///////////////////
 
-void Dot::set(Color *c, size_t nPixels, boolean multiColor){
+void Dot::transmit(const Color *c, size_t nPixels, boolean multiColor){
   
-  *dataClearReg=dataMask;           // send all zeros
-  for(int j=0;j<31;j++){
+  if(nPixels==0)
+    return;
+  
+  *dataClearReg=dataMask;           // send 0x0000
+  *clockClearReg=clockMask;    
+  for(int j=0;j<32;j++){
     *clockSetReg=clockMask;
     *clockClearReg=clockMask;    
   }
@@ -222,11 +226,108 @@ void Dot::set(Color *c, size_t nPixels, boolean multiColor){
     c+=multiColor;
   }
 
-  *dataClearReg=dataMask;           // send all zeros
-  for(int j=0;j<31;j++){
-    *clockSetReg=clockMask;
-    *clockClearReg=clockMask;    
+  int nEndBlocks=(nPixels-1)/64+1;  // need an end block of 32 bits for every 64 pixels in strand (i.e. 128 pixels requires 2 end blocks)
+
+  for(int i=0;i<nEndBlocks;i++) {
+    *dataSetReg=dataMask;           // send 0xE000 (i.e. a valid blank pixel - needed if nPixels is set to less than total number in strand)
+    for(int j=0;j<3;j++){
+      *clockSetReg=clockMask;
+      *clockClearReg=clockMask;    
+    }
+    *dataClearReg=dataMask;         
+    for(int j=0;j<29;j++){
+      *clockSetReg=clockMask;
+      *clockClearReg=clockMask;    
+    }
   }
 }
 
 ////////////////////////////////////////////
+//          Two-Wire RGB WS2801           //
+////////////////////////////////////////////
+
+WS2801_LED::WS2801_LED(uint8_t dataPin, uint8_t clockPin, spi_host_device_t host){
+
+  if(host==SPI1_HOST)
+    #if defined(CONFIG_IDF_TARGET_ESP32)
+      spiHost=SPI2_HOST;
+    #elif defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
+      spiHost=SPI3_HOST;
+    #else
+      spiHost=SPI2_HOST;
+  #endif
+  else
+    spiHost=host;
+
+  buscfg.mosi_io_num=dataPin;
+  buscfg.sclk_io_num=clockPin;
+  buscfg.miso_io_num = -1;
+  buscfg.data2_io_num = -1;
+  buscfg.data3_io_num = -1;
+  buscfg.data4_io_num = -1;
+  buscfg.data5_io_num = -1;
+  buscfg.data6_io_num = -1;
+  buscfg.data7_io_num = -1;
+  
+  devcfg.clock_speed_hz = 2 * 1000 * 1000;
+  devcfg.spics_io_num = -1;
+  devcfg.queue_size=1;
+  devcfg.flags|=SPI_DEVICE_HALFDUPLEX;
+
+  if(spi_bus_get_attr(spiHost)==NULL)
+    spi_bus_initialize(spiHost, &buscfg, SPI_DMA_CH_AUTO);
+  spi_bus_add_device(spiHost, &devcfg, &spi);
+
+  gpioReset.pin_bit_mask=(1ULL<<dataPin | 1ULL<<clockPin);
+  gpioReset.pull_down_en=GPIO_PULLDOWN_ENABLE;  
+}
+
+///////////////////
+
+void WS2801_LED::setTiming(uint32_t freq){
+  devcfg.clock_speed_hz=freq;
+  spi_bus_remove_device(spi);
+  spi_bus_add_device(spiHost, &devcfg, &spi);
+}
+
+///////////////////
+
+WS2801_LED::Color *WS2801_LED::getMem(size_t nColors){
+
+  return((Color *)heap_caps_calloc(nColors,sizeof(Color),MALLOC_CAP_DMA));
+}
+
+///////////////////
+
+void WS2801_LED::set(Color c, size_t nPixels){
+
+  Color *colors=getMem(nPixels);
+  
+  if(colors!=NULL){
+    for(int i=0;i<nPixels;i++)
+      colors[i]=c;
+    transmit(colors,nPixels);
+    free(colors);
+  }
+}
+
+///////////////////
+
+void WS2801_LED::transmit(const Color *c, size_t nPixels){
+  
+  if(nPixels==0)
+    return;
+
+  spi_device_acquire_bus(spi,portMAX_DELAY);
+  spicommon_bus_initialize_io(spiHost, &buscfg, SPICOMMON_BUSFLAG_MASTER, NULL);
+  delay(1);
+  trans.length=nPixels*24;
+  trans.tx_buffer=c;
+  spi_device_transmit(spi,&trans);
+  gpio_config(&gpioReset);
+  spi_device_release_bus(spi);
+  return;
+}
+
+////////////////////////////////////////////
+

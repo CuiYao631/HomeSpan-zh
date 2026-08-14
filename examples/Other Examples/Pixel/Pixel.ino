@@ -27,8 +27,9 @@
  
 // HomeSpan Addressable RGB LED Examples.  Demonstrates use of:
 //
-//  * HomeSpan Pixel Class that provides for control of single-wire addressable RGB and RGBW LEDs, such as the WS2812 and SK6812
-//  * HomeSpan Dot Class that provides for control of two-wire addressable RGB LEDs, such as the APA102 and SK9822
+//  * HomeSpan Pixel Class that provides for control of single-wire addressable RGB RGBW, and RGBWC LEDs using the NeoPixel protocol, such as the WS2812 and SK6812
+//  * HomeSpan Dot Class that provides for control of two-wire addressable RGB LEDs using the DotStar protocol, such as the APA102 and SK9822
+//  * HomeSpan WS2801_LED Class that provides for control of two-wire addressable RGB LEDs using the WS2801 protocol
 //
 
 #ifndef HS_FEATHER_PINS
@@ -37,6 +38,8 @@
   #define NEOPIXEL_RGBW_PIN      32
   #define DOTSTAR_DATA_PIN       33
   #define DOTSTAR_CLOCK_PIN      27
+  #define WS2801_DATA_PIN        14
+  #define WS2801_CLOCK_PIN       22
   
 #else
 
@@ -44,6 +47,8 @@
   #define NEOPIXEL_RGBW_PIN      F32
   #define DOTSTAR_DATA_PIN       F33
   #define DOTSTAR_CLOCK_PIN      F27
+  #define WS2801_DATA_PIN        F14
+  #define WS2801_CLOCK_PIN       F22
   
 #endif
 
@@ -51,7 +56,7 @@
 
 ///////////////////////////////
 
-struct NeoPixel_RGB : Service::LightBulb {      // Addressable single-wire RGB LED Strand (e.g. NeoPixel)
+struct NeoPixel_RGB : Service::LightBulb {      // Addressable single-wire RGB NeoPixel LED Strand
  
   Characteristic::On power{0,true};
   Characteristic::Hue H{0,true};
@@ -86,7 +91,7 @@ struct NeoPixel_RGB : Service::LightBulb {      // Addressable single-wire RGB L
 
 ///////////////////////////////
 
-struct NeoPixel_RGBW : Service::LightBulb {      // Addressable single-wire RGBW LED Strand (e.g. NeoPixel)
+struct NeoPixel_RGBW : Service::LightBulb {      // Addressable single-wire RGBW NeoPixel LED Strand
  
   Characteristic::On power{0,true};
   Characteristic::Brightness V{100,true};
@@ -121,7 +126,7 @@ struct NeoPixel_RGBW : Service::LightBulb {      // Addressable single-wire RGBW
 
 ///////////////////////////////
 
-struct DotStar_RGB : Service::LightBulb {      // Addressable two-wire RGB LED Strand (e.g. DotStar)
+struct DotStar_RGB : Service::LightBulb {      // Addressable two-wire RGB DotStar LED Strand
  
   Characteristic::On power{0,true};
   Characteristic::Hue H{0,true};
@@ -136,7 +141,6 @@ struct DotStar_RGB : Service::LightBulb {      // Addressable two-wire RGB LED S
     pixel=new Dot(dataPin,clockPin);          // creates Dot LED on specified pins
     this->nPixels=nPixels;                    // save number of Pixels in this LED Strand
     update();                                 // manually call update() to set pixel with restored initial values
-    update();                                 // call second update() a second time - DotStar seems to need to be "refreshed" upon start-up
   }
 
   boolean update() override {
@@ -162,6 +166,47 @@ struct DotStar_RGB : Service::LightBulb {      // Addressable two-wire RGB LED S
 
 ///////////////////////////////
 
+struct WS2801_RGB : Service::LightBulb {      // Addressable two-wire RGB WS2801 LED Strand
+ 
+  Characteristic::On power{0,true};
+  Characteristic::Hue H{0,true};
+  Characteristic::Saturation S{0,true};
+  Characteristic::Brightness V{100,true};
+  WS2801_LED *pixel;
+  WS2801_LED::Color *color;
+  int nPixels;
+
+  WS2801_RGB(uint8_t dataPin, uint8_t clockPin, int nPixels) : Service::LightBulb(){
+
+    V.setRange(5,100,1);                        // sets the range of the Brightness to be from a min of 5%, to a max of 100%, in steps of 1%
+    pixel=new WS2801_LED(dataPin, clockPin);    // creates WS2801 RGB LED on specified pins
+    this->nPixels=nPixels;                      // save number of Pixels in this LED Strand
+    color=WS2801_LED::getMem(nPixels);          // get memory to store nPixels worth of Colors
+        
+    update();                                   // manually call update() to set pixel with restored initial values
+  }
+
+  boolean update() override {
+
+    int p=power.getNewVal();
+    
+    float h=H.getNewVal<float>();       // range = [0,360]
+    float s=S.getNewVal<float>();       // range = [0,100]
+    float v=V.getNewVal<float>();       // range = [0,100]
+
+    float hueStep=120.0/nPixels;        // step size for change in hue from one pixel to the next
+
+    for(int i=0;i<nPixels;i++)
+      color[i].HSV(h+i*hueStep,s,v*p);  // create spectrum of all hues over 1/3 of color wheel starting with specified Hue
+
+    pixel->set(color,nPixels);          // sets all nPixels to the same HSV color
+          
+    return(true);  
+  }
+};
+
+///////////////////////////////
+
 void setup() {
   
   Serial.begin(115200);
@@ -177,8 +222,10 @@ void setup() {
     new NeoPixel_RGBW(NEOPIXEL_RGBW_PIN,60);                    // create 60-LED NeoPixel RGBW Strand  with simulated color temperature control 
 
   SPAN_ACCESSORY("Dot RGB");
-    new DotStar_RGB(DOTSTAR_DATA_PIN,DOTSTAR_CLOCK_PIN,30);     // create 30-LED DotStar RGB Strand displaying a spectrum of colors and using the current-limiting feature of DotStars to create flicker-free dimming
+    new DotStar_RGB(DOTSTAR_DATA_PIN,DOTSTAR_CLOCK_PIN,30);     // create 30-LED DotStar RGB Strand displaying a full spectrum of colors and using the current-limiting feature of DotStars to create flicker-free dimming
 
+  SPAN_ACCESSORY("WS2801 RGB");
+    new WS2801_RGB(WS2801_DATA_PIN,WS2801_CLOCK_PIN,25);        // create 25-LED WS2801 RGB Strand displaying a smooth spectrum of colors across 1/3 of the color wheel
 }
 
 ///////////////////////////////

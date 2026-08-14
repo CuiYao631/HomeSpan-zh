@@ -65,6 +65,7 @@ class Blinker {
   boolean isPaused=false;
 
   static void blinkTask(void *arg);
+  static void blinkTaskInverted(void *arg);
 
   public:
 
@@ -73,7 +74,7 @@ class Blinker {
 //  Creates a generic blinking LED in a separate task thread
 //
 //  led:              An initialized LED device that implements the Blinkable Interface
-////
+//
 //  autoOffDuration:  If greater than zero, Blinker will automatically turn off after autoOffDuration (in seconds) has elapsed
 //                    Blinker will resume normal operation upon next call to start(), on(), or off()
 //                    Program must periodically call check() for auto-off functionality to work
@@ -85,7 +86,7 @@ class Blinker {
 //  period:      ON/OFF blinking period, in milliseconds
 //  dutyCycle:   Fraction of period that LED is ON (default=50%)
 
-  void start(int period, float dutyCycle, int nBlinks, int delayTime);
+  void start(int period, float dutyCycle, int nBlinks, int delayTime, boolean invert=false);
 
 //  Starts ON/OFF blinking pattern.
 //
@@ -93,6 +94,7 @@ class Blinker {
 //  dutyCycle:   Fraction of period that LED is ON (default=50%)
 //  nBlinks:     Number of blinks in blinking portion of pattern
 //  delayTime:   delay, in milliseconds, during which LED is off before restarting blinking pattern
+//  invert:      setting to true inverts LED so that it blinks OFF instead of ON    
 
   void stop();
 

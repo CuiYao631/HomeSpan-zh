@@ -54,27 +54,17 @@
 
 #define     DEFAULT_FAVICON           "https://raw.githubusercontent.com/HomeSpan/HomeSpan/refs/heads/master/docs/images/HomeSpanLogo.png"
 
-#define     DEFAULT_LOW_MEM_THRESHOLD     80000           // default low watermark memory (for internal RAM) threshold that triggers warning
+#define     DEFAULT_LOW_MEM_THRESHOLD     20000           // default low watermark memory (for internal RAM) threshold that triggers warning
 
 #define     DEFAULT_REBOOT_CALLBACK_TIME  5000            // default time (in milliseconds) to check for reboot callback
 
+#define     DEFAULT_CB_COMMAND_TIME       3000            // default time (in milliseconds) for Control Button to trigger Command Mode enter/exit
+#define     DEFAULT_CB_RESET_TIME         10000           // default time (in milliseconds) for Control Button to trigger Factory Reset
 
 /////////////////////////////////////////////////////
 //              OTA PARTITION INFO                 //
 
 #define     HOMESPAN_MAGIC_COOKIE     "HomeSpanMagicCookie##2022"
-
-/////////////////////////////////////////////////////
-//              STATUS LED SETTINGS                //
-
-#define     LED_WIFI_NEEDED       300,0.5,1,2700      // slow single-blink
-#define     LED_PAIRING_NEEDED    300,0.5,2,2400      // slow double-blink
-#define     LED_ALERT             100                 // rapid flashing
-#define     LED_WIFI_CONNECTING   2000                // slow flashing
-#define     LED_AP_STARTED        100,0.5,2,300       // rapid double-blink
-#define     LED_AP_CONNECTED      300,0.5,2,400       // medium double-blink    
-#define     LED_OTA_STARTED       300,0.5,3,400       // medium triple-blink
-#define     LED_WIFI_SCANNING     300,0.8,3,400       // medium inverted triple-blink
 
 /////////////////////////////////////////////////////
 //      Message Log Level Control Macros           //

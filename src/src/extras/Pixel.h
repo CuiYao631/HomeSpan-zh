@@ -41,12 +41,14 @@
 #include <hal/rmt_ll.h>         // where low-level RMT calls are defined
 
 #include <soc/gpio_struct.h>
+#include "driver/spi_master.h"
+#include "esp_private/spi_common_internal.h"
 
 [[maybe_unused]] static const char* PIXEL_TAG = "Pixel";
 
-////////////////////////////////////////////
-//     Single-Wire RGB/RGBW NeoPixels     //
-////////////////////////////////////////////
+//////////////////////////////////////////////////
+//     Single-Wire RGB/RGBW/RGBWC NeoPixels     //
+//////////////////////////////////////////////////
 
 class Pixel : public Blinkable {
 
@@ -157,11 +159,13 @@ class Pixel : public Blinkable {
     float coolTemp=7000;           // defult temperature (in Kelvin) of cool-white LED
     uint8_t map[5];                // color map representing order in which color bytes are transmitted
     Color onColor;                 // color used for on() command
-  
+
+    void transmit(const Color *c, size_t nPixels, boolean multiColor);    // transmits Colors to the LED strand; setting multiColor to false repeats Color in c[0] for all nPixels
+
   public:
-    Pixel(int pin, const char *pixelType="GRB");                     // creates addressable single-wire LED of pixelType connected to pin (such as the SK68 or WS28)   
-    void set(Color *c, size_t nPixels, boolean multiColor=true);     // sets colors of nPixels based on array of Colors c; setting multiColor to false repeats Color in c[0] for all nPixels
-    void set(Color c, size_t nPixels=1){set(&c,nPixels,false);}      // sets color of nPixels to be equal to specific Color c
+    Pixel(int pin, const char *pixelType="GRB");                          // creates addressable single-wire LED of pixelType connected to pin (such as the SK68 or WS28)   
+    void set(const Color *c, size_t nPixels){transmit(c,nPixels,true);}   // sets colors of nPixels based on array of Colors c
+    void set(Color c, size_t nPixels=1){transmit(&c,nPixels,false);}      // sets color of nPixels to be equal to specific Color c
     
     static Color RGB(uint8_t r, uint8_t g, uint8_t b, uint8_t w=0, uint8_t c=0){return(Color().RGB(r,g,b,w,c));}   // a static method for returning an RGB(WC) Color
     static Color HSV(float h, float s, float v, double w=0, double c=0){return(Color().HSV(h,s,v,w,c));}           // a static method for returning an HSV(WC) Color
@@ -278,14 +282,107 @@ class Dot {
     volatile uint32_t *dataClearReg;
     volatile uint32_t *clockSetReg;
     volatile uint32_t *clockClearReg;
+    void transmit(const Color *c, size_t nPixels, boolean multiColor);                      // transmits Colors to the LED strand; setting multiColor to false repeats Color in c[0] for all nPixels
 
   public:
-    Dot(uint8_t dataPin, uint8_t clockPin);                                                 // creates addressable two-wire RGB LED connected to dataPin and clockPin (such as the DotStar SK9822 or APA102)
-    void set(Color *c, size_t nPixels, boolean multiColor=true);                            // sets colors of nPixels based on array of Colors c; setting multiColor to false repeats Color in c[0] for all nPixels
-    void set(Color c, size_t nPixels=1){set(&c,nPixels,false);}                             // sets color of nPixels to be equal to specific Color c
+    Dot(uint8_t dataPin, uint8_t clockPin);                                                 // creates addressable two-wire LED connected to dataPin and clockPin (such as the DotStar SK9822 or APA102)
+    void set(const Color *c, size_t nPixels){transmit(c,nPixels,true);}                     // sets colors of nPixels based on array of Colors c
+    void set(Color c, size_t nPixels=1){transmit(&c,nPixels,false);}                        // sets color of nPixels to be equal to specific Color c
     
     static Color RGB(uint8_t r, uint8_t g, uint8_t b, uint8_t driveLevel=31){return(Color().RGB(r,g,b,driveLevel));}  // an alternative method for returning an RGB Color
     static Color HSV(float h, float s, float v, double drivePercent=100){return(Color().HSV(h,s,v,drivePercent));}    // an alternative method for returning an HSV Color
+    
+};
+
+////////////////////////////////////////////
+//          Two-Wire RGB WS2801           //
+////////////////////////////////////////////
+
+class WS2801_LED {
+
+  public:
+    struct Color {
+      uint8_t col[3];
+
+      Color(){
+        col[0]=0;
+        col[1]=0;
+        col[2]=0;
+      }
+
+      Color RGB(uint8_t r, uint8_t g, uint8_t b){         // returns Color based on provided RGB values where r/g/b=[0-255]
+        col[0]=r;
+        col[1]=g;
+        col[2]=b;
+        return(*this);
+      }
+
+      Color HSV(float h, float s, float v){               // returns Color based on provided HSV values where h=[0,360] and s/v=[0,100]
+        float r,g,b;
+        LedPin::HSVtoRGB(h,s/100.0,v/100.0,&r,&g,&b);
+        col[0]=r*255;
+        col[1]=g*255;
+        col[2]=b*255;
+        return(*this);
+      }
+
+      bool operator==(const Color& color){
+        boolean eq=true;
+        for(int i=0;i<3;i++)
+          eq&=(col[i]==color.col[i]);
+        return(eq);          
+      }
+      
+      bool operator!=(const Color& color){
+        return(!(*this==color));
+      }
+
+      Color operator+(const Color& color){
+        Color newColor;
+        for(int i=0;i<3;i++)
+          newColor.col[i]=col[i]+color.col[i];
+        return(newColor);
+      }
+
+      Color& operator+=(const Color& color){
+        for(int i=0;i<3;i++)
+          col[i]+=color.col[i];
+        return(*this);
+      }
+
+      Color operator-(const Color& color){
+        Color newColor;
+        for(int i=0;i<3;i++)
+          newColor.col[i]=col[i]-color.col[i];
+        return(newColor);
+      }
+
+      Color& operator-=(const Color& color){
+        for(int i=0;i<3;i++)
+          col[i]-=color.col[i];
+        return(*this);
+      }                               
+    }; // Color
+
+  private:
+    spi_host_device_t spiHost;
+    spi_bus_config_t buscfg = {};
+    spi_device_interface_config_t devcfg = {};
+    spi_transaction_t trans = {};
+    spi_device_handle_t spi;
+    gpio_config_t gpioReset = {};
+
+    void transmit(const Color *c, size_t nPixels);                                          // transmits Colors to the LED strand
+
+  public:
+    WS2801_LED(uint8_t dataPin, uint8_t clockPin, spi_host_device_t = SPI1_HOST);           // creates addressable two-wire LED connected to dataPin and clockPin usig the WS2801 protocol
+    void setTiming(uint32_t freq);                                                          // change SPI clock frequency from 2MHz default to freq for this LED
+    static Color *getMem(size_t nColors);                                                   // allocate space for storing nColors of Color using only DMA-capable memory
+    void set(const Color *c, size_t nPixels){transmit(c,nPixels);}                          // sets colors of nPixels based on array of Colors c
+    void set(Color c, size_t nPixels=1);                                                    // sets color of nPixels to be equal to specific Color c
+
+    static Color RGB(uint8_t r, uint8_t g, uint8_t b){return(Color().RGB(r,g,b));}          // an alternative method for returning an RGB Color
+    static Color HSV(float h, float s, float v){return(Color().HSV(h,s,v));}                // an alternative method for returning an HSV Color
     
 };
 

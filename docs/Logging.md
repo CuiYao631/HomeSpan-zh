@@ -34,11 +34,13 @@ In addition to logging messages to the Arduino Serial Monitor, HomeSpan can opti
 
 Also embedded in the HomeSpan's Web Log functionality is the ability to call an NTP time server to set the device clock.  This optional feature allows HomeSpan to create clock-based timestamps (e.g. *Sat Apr 16 19:48:41 2022*).
 
-The HomeSpan Web Log page itself comprises two parts:
+The HomeSpan Web Log page itself comprises three tables:
  
-  * the top of the page provides HomeSpan-generated status information, such as the name of the device, total uptime since last reboot, and version numbers of the various software components
- 
-  * the bottom of the page posts messages you create using the **WEBLOG()** macro.  This macro comes only in the *printf*-style form `WEBLOG(const char *fmt, ...)`, similar to the second version of the LOG() macros described above.
+  * *Information Table* - provides HomeSpan-generated status information, such as the name of the device, total uptime since last reboot, and version numbers of the various software components
+
+  * *Client Connections Table* - lists all active client connections (similar to the 's' CLI command)
+    
+  * *Log Messages Table* - posts HomeSpan-generated log messages as well as messages you create using the **WEBLOG()** macro.  This macro comes only in the *printf*-style form `WEBLOG(const char *fmt, ...)`, similar to the second version of the LOG() macros described above.
  
 Messages produced with WEBLOG() are *also* echoed to the Arduino Serial Monitor with the same priority as LOG1() messages, meaning they will be output to the Serial Monitor if the *Log Level* is set to 1 or greater.  The Web Log page displays messages in reverse-chronological order, supplemented with the following additional items:
 
@@ -66,20 +68,22 @@ See [Example 19 - WebLog](Tutorials.md#example-19---weblog) for a tutorial sketc
  
 ### Custom Style Sheets (CSS)
  
-HomeSpan's Web Log normally consists of black text on a light blue background.  However, you can set a Custom Style Sheet (CSS) to change the format by calling `homeSpan.setWebLogCSS(const char *css)`, where *css* is constructed using [HTML classes](https://www.w3schools.com/html/html_classes.asp) containing one or more custom style elements.  HomeSpan implements the following three class names for the different parts of the Web Log:
+HomeSpan's Web Log normally consists of black text on a light blue background.  However, you can set a Custom Style Sheet (CSS) to change the format by calling `homeSpan.setWebLogCSS(const char *css)`, where *css* is constructed using [HTML classes](https://www.w3schools.com/html/html_classes.asp) containing one or more custom style elements.  HomeSpan implements the following four class names for the different parts of the Web Log:
  
- * *bod1* - this class specifies style elements for the main body of the Web Log page, including the background color and the header text at the top (which itself is formatted as \<h2\>)
- * *tab1* - this class specifies style elements for the status table at the top of the Web Log page
- * *tab2* - this class specifies style elements for the log entry table at the botom of the Web Log page
+ * *body* - this class specifies style elements for the main body of the Web Log page, including the background color and the header text at the top (which itself is formatted as \<h2\>)
+ * *infoTable* - this class specifies style elements for the *Information Table*
+ * *clientTable* - this class specifies style elements for the *Client Connections Table*
+ * *logTable* - this class specifies style elements for the *Log Messages Table*
  
-For example, the following CSS changes the background color of the Web Log page to light yellow, the color of the header text to blue, the color of the cells in the top table to light green, and the color of the cells in the botom table to light blue.  It also changes the color of the text in the header row (\<th\>) of the second table to red, the color of the data rows (\<td\>) in the second table to dark blue, and the alignment of the text in the data rows to be centered within each table cell:
+For example, the following CSS changes the colors used in the body as well as various colors and styles used for different elements in each of the three tables:
  
- ```C++
- homeSpan.setWebLogCSS(".bod1 {background-color:lightyellow;}"
-                       ".bod1 h2 {color:blue;}"
-                       ".tab1 {background-color:lightgreen;}"
-                       ".tab2 {background-color:lightblue;} .tab2 th {color:red;} .tab2 td {color:darkblue; text-align:center;}"
-                       );
+```C++
+homeSpan.setWebLogCSS(".body {background-color:lightyellow;}"
+                      ".body h2 {color:blue;}"
+                      ".infoTable {background-color:lightgreen;}"
+                      ".clientTable {background-color:yellow;} .clientTable th {color:blue;} .clientTable td {color:black; text-align:center;}"
+                      ".logTable {background-color:lightblue;} .logTable th {color:red;} .logTable td {color:darkblue; text-align:center;}"
+                     );
  ```
  
 Note that HomeSpan outputs the full content of the Web Log HTML, including whatever CSS you may have specified above, to the Serial Monitor whenever the Log Level is set to 1 or greater.  Reviewing this output can be helpful when creating your own CSS.

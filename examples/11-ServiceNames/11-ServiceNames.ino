@@ -39,7 +39,7 @@
 #include "HomeSpan.h" 
 
   // INITIAL NOTE:  Apple is constantly updating how the Home App Icons are chosen and how/if/where/when the Names for
-  //                Accessories and Services are displayed.  This example has been tested and verified as of iOS 17.2.1.
+  //                Accessories and Services are displayed.  This example has been tested and verified as of iOS 26.4.
 
 void setup() {
 
@@ -68,7 +68,7 @@ void setup() {
   // control screen of an Accessory Tile if there are two more more Services of the same type.  But even if a Service name does not appear in the Home App,
   // it will still be used by Siri to control a specific Service within an Accessory by voice.
 
-  // In the example below we create 5 different functional Accessories, each illustrating how names, as well as icons, are chosen by the Home App
+  // In the example below we create 4 different functional Accessories, each illustrating how names, as well as icons, are chosen by the Home App
   
   Serial.begin(115200);
 

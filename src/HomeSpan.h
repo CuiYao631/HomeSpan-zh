@@ -101,13 +101,13 @@ extern "C" bool verifyRollbackLater();    // declare pre-defined Arduino-ESP32 v
 
 ///////////////////////////////
 
-#define STATUS_UPDATE(LED_UPDATE,MESSAGE_UPDATE)  {homeSpan.statusLED->LED_UPDATE;if(homeSpan.statusCallback)homeSpan.statusCallback(MESSAGE_UPDATE);}
-
 enum HS_STATUS {
+  HS_INITIAL_SETUP,                       // HomeSpan is running code in the setup() portion of the sketch
   HS_WIFI_NEEDED,                         // WiFi Credentials have not yet been set/stored
   HS_WIFI_CONNECTING,                     // HomeSpan is trying to connect to the network specified in the stored WiFi Credentials
   HS_PAIRING_NEEDED,                      // HomeSpan is connected to central WiFi network, but device has not yet been paired to HomeKit
   HS_PAIRED,                              // HomeSpan is connected to central WiFi network and the device has been paired to HomeKit
+  HS_CONNECTED,                           // HomeSpan has at least one verified client connection from HomeKit
   HS_ENTERING_CONFIG_MODE,                // User has requested the device to enter into Command Mode
   HS_CONFIG_MODE_EXIT,                    // HomeSpan is in Command Mode with "Exit Command Mode" specified as choice
   HS_CONFIG_MODE_REBOOT,                  // HomeSpan is in Command Mode with "Reboot" specified as choice
@@ -154,6 +154,13 @@ class Controller {
   const uint8_t *getID() const {return(ID);}
   const uint8_t *getLTPK() const {return(LTPK);}
   boolean isAdmin() const {return(admin);}
+  const char *getPairingInfo(char **buf) const{
+    size_t olen;
+    TempBuffer<char> tBuf(256);
+    mbedtls_base64_encode((uint8_t *)tBuf.get(),256,&olen,(uint8_t *)this,sizeof(struct Controller));
+    asprintf(buf,tBuf.get());
+    return(*buf);
+  }
 
 };
 
@@ -289,6 +296,9 @@ class Span{
   boolean initialPollingCompleted=false;        // flag to indicate whether polling task has initially completed
   boolean forceConfigIncrement=false;           // flag to indicate whether configuration number (MDNS C# value) should be incremented even if database config has not changed
   char *compileTime=NULL;                       // optional compile time string --- can be set with call to setCompileTime()
+  HS_STATUS hsStatus=HS_INITIAL_SETUP;          // current HomeSpan status
+  uint32_t hsStatusTime;                        // timestamp (in seconds) of latest recent HomeSpan status update
+  std::shared_mutex hsStatusMux;                // shared read/write lock
    
   nvs_handle charNVS;                           // handle for non-volatile-storage of Characteristics data
   nvs_handle wifiNVS=0;                         // handle for non-volatile-storage of WiFi data
@@ -317,6 +327,8 @@ class Span{
   uint16_t autoOffLED=0;                                      // automatic turn-off duration (in seconds) for Status LED
   int logLevel=DEFAULT_LOG_LEVEL;                             // level for writing out log messages to serial monitor
   unsigned long comModeLife=DEFAULT_COMMAND_TIMEOUT*1000;     // length of time (in milliseconds) to keep Command Mode alive before resuming normal operations
+  unsigned long cbComTime=DEFAULT_CB_COMMAND_TIME;            // time (in milliseconds) for Control Button to trigger Command Mode enter/exit
+  unsigned long cbResTime=DEFAULT_CB_RESET_TIME;              // time (in milliseconds) for Control Button to trigger Factory Reset
   uint16_t tcpPortNum=DEFAULT_TCP_PORT;                       // port for TCP communications between HomeKit and HomeSpan
   char qrID[5]="";                                            // Setup ID used for pairing with QR Code
   void (*wifiCallback)()=NULL;                                // optional callback function to invoke once WiFi connectivity is initially established *** TO BE DEPRECATED ***
@@ -358,7 +370,8 @@ class Span{
   void pollTask();                                                       // poll HAP Clients and process any new HAP requests
   void configureNetwork();                                               // configure Network services (MDNS, WebLog,  OTA, etc.) and start HAP Server
   void commandMode();                                                    // allows user to control and reset HomeSpan settings with the control button
-  void resetStatus();                                                    // resets statusLED and calls statusCallback based on current HomeSpan status
+  void setStatus(HS_STATUS hst);                                         // sets hsStatus to hst, updates statusLED, and calls statusCallback
+  void resetStatus();                                                    // resets hsStatus, updates statusLED, and calls statusCallback
   void reboot();                                                         // reboots device
 
   void printfAttributes(int flags=GET_VALUE|GET_META|GET_PERMS|GET_TYPE|GET_DESC);   // writes Attributes JSON database to hapOut stream
@@ -406,7 +419,15 @@ class Span{
     controlButton=new PushButton(pin, triggerType);
     return(*this);
     }
-    
+
+  Span& setControlTimes(uint32_t comTime, uint32_t resTime){                             // sets Control Button hold times (in millis) for entering/exiting Command Mode and for Factory Reset
+    if(resTime>comTime){
+      cbComTime=comTime;
+      cbResTime=resTime;
+    }
+    return(*this);
+  }
+
   int getControlPin(){return(controlButton?controlButton->getPin():-1);}                 // get Control Pin (returns -1 if undefined)
 
   Span& setStatusPin(uint8_t pin){statusDevice=new GenericLED(pin);return(*this);}       // sets Status Device to a simple LED on specified pin
@@ -437,7 +458,9 @@ class Span{
   Span& setApFunction(void (*f)()){apFunction=f;return(*this);}                          // sets an optional user-defined function to call when activating the WiFi Access Point  
   Span& enableAutoStartAP(){autoStartAPEnabled=true;return(*this);}                      // enables auto start-up of Access Point when WiFi Credentials not found
   Span& setWifiCredentials(const char *ssid, const char *pwd);                           // sets WiFi Credentials
-  Span& setConnectionTimes(uint32_t minTime, uint32_t maxTime, uint8_t nSteps);          // sets min/max WiFi connection times (in seconds) and number of steps  
+  Span& setConnectionTimes(uint32_t minTime, uint32_t maxTime, uint8_t nSteps);          // sets min/max WiFi connection times (in seconds) and number of steps
+  std::pair<HS_STATUS,uint32_t> getStatus();                                             // returns current HomeSpan status and duration
+  void resetStatusDuration();                                                            // resets HomeSpan status duration to zero
   Span& setStatusCallback(void (*f)(HS_STATUS status)){statusCallback=f;return(*this);}  // sets an optional user-defined function to call when HomeSpan status changes
   const char* statusString(HS_STATUS s);                                                 // returns char string for HomeSpan status change messages
   Span& setPairingCode(const char *s, boolean progCall=true);                            // sets the Pairing Code - use is NOT recommended.  Use 'S' from CLI instead
@@ -447,6 +470,7 @@ class Span{
   Span& setWifiBegin(void (*f)(const char *, const char *)){wifiBegin=f;return(*this);}  // sets an optional user-defined function to over-ride WiFi.begin() with additional logic
   Span& setPollingCallback(void (*f)()){pollingCallback=f;return(*this);}                // sets an optional user-defined function to call upon INITIAL completion of the polling task (only called once)
   Span& useEthernet(){ethernetEnabled=true;return(*this);}                               // force use of Ethernet instead of WiFi, even if ETH not called or Ethernet card not detected
+  boolean usingEthernet(){return(ethernetEnabled);}                                      // returns true if Ethernet is being used, else false if WiFi is being used
   Span& forceNewConfigNumber(){forceConfigIncrement=true;return(*this);}                 // force configuration increment when updateDatabase() is called even if database has not changed 
 
   Span& setGetCharacteristicsCallback(void (*f)(const char *)){getCharacteristicsCallback=f;return(*this);}                    // sets an optional callback called whenever HomeKit sends a getCharacteristics request
@@ -503,6 +527,7 @@ class Span{
 
   Span& addBssidName(String bssid, string name){bssid.toUpperCase();bssidNames[bssid.c_str()]=name;return(*this);}
 
+  const char *getPairingInfo(char **buf);
   list<Controller, Mallocator<Controller>>::const_iterator controllerListBegin();
   list<Controller, Mallocator<Controller>>::const_iterator controllerListEnd();
 
@@ -754,8 +779,12 @@ class SpanCharacteristic{
     if(format<FORMAT::STRING){
       uvSet(minValue,min);
       uvSet(maxValue,max);
-      uvSet(stepValue,0);
+      uvSet(stepValue,isCustom?1:0);      // if this is Custom Characteristic, always specify stepValue and set customRange flag
+      customRange=isCustom;
     }
+
+    if(isCustom)
+      setDescription(hapName);
           
   } // init()
 
@@ -784,7 +813,7 @@ class SpanCharacteristic{
     setValCheck();
     
     if(!((val >= uvGet<T>(minValue)) && (val <= uvGet<T>(maxValue)))){
-      LOG0("\n*** WARNING:  Attempt to update Characteristic::%s with setVal(%g) is out of range [%g,%g].  This may cause device to become non-responsive!\n\n",
+      WEBLOG("\n*** WARNING:  Attempt to update Characteristic::%s with setVal(%g) is out of range [%g,%g].  This may cause device to become non-responsive!\n\n",
       hapName,(double)val,uvGet<double>(minValue),uvGet<double>(maxValue));
     }
    
@@ -830,7 +859,8 @@ class SpanCharacteristic{
     if(!staticRange){
       uvSet(minValue,min);
       uvSet(maxValue,max);
-      uvSet(stepValue,step);  
+      if(step>0)
+        uvSet(stepValue,step);  
       customRange=true; 
     } else
       setRangeError=true;

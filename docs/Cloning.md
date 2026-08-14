@@ -6,29 +6,18 @@ Even though two different ESP32 devices may be running the exact same sketch, th
 
 When HomeSpan is initially paired to HomeKit, the 36-character Device ID and 32-byte LTPK for one or more HomeKit Controllers is securely transmitted to the HomeSpan Accessory.  These keys are then saved in the device's NVS for permanent retention (though can be erased by the 'H' command).
 
-Collectively, the Accessory Device ID, LTPK and LTSK, along with the Device ID and LTPK for each paired Controller, is known as the device's *Pairing Data*.  You can view the Pairing Data (except for the LTSK) for any HomeSpan Accessory by typing 'S' into the CLI.  Here is an example:
+Collectively, the Accessory Device ID, LTPK and LTSK, along with the Device ID and LTPK for each paired Controller, is known as the device's *Pairing Data*.  You can view the Pairing Data (except for the LTSK) for any HomeSpan Accessory by typing 's' into the CLI.  Here is an example:
 
 ```
 *** HomeSpan Status ***
 
-IP Address:        192.168.1.11
+IP Addresses:      IPv4 = 192.168.1.205  IPv6 = ::  (Band: 2.4 GHz  RSSI=-59  BSSID=34:98:B5:DB:3E:C0)
 
 Accessory ID:      77:D2:F6:99:CE:65                               LTPK: 346A544A876B124E50F9E3CC276A29D23E8B5DD0590138AA59C833A0D2096E37
 Paired Controller: A487DE69-81C3-B5ED-8762-C3B9A987F967   (admin)  LTPK: EE12A678DD56C4E9C0D935A341B8E6C6C098A6B3E6D4C5F5F914A54C9E85BA76
 Paired Controller: 449AD09E-109D-3EB5-25B4-8A04E5C57D65   (admin)  LTPK: 34A6B57DE881A75B647D2C9C68E76745A3B466577D19E4C78A67A68C4ED959B8
 
-Connection #0 192.168.1.29 on Socket 3/16  ID=A487DE69-81C3-B5ED-8762-C3B9A987F967   (admin)
-Connection #1 (unconnected)
-Connection #2 (unconnected)
-Connection #3 (unconnected)
-Connection #4 (unconnected)
-Connection #5 (unconnected)
-Connection #6 (unconnected)
-Connection #7 (unconnected)
-Connection #8 (unconnected)
-Connection #9 (unconnected)
-Connection #10 (unconnected)
-Connection #11 (unconnected)
+Client #2: 192.168.1.29 ID=A487DE69-81C3-B5ED-8762-C3B9A987F967   (admin)
 
 *** End Status ***
 ```
@@ -47,7 +36,7 @@ Cloning HomeSpan's Pairing Data is a two-step process.  First you output the Pai
 
 #### Step 1: Type 'P' into the Serial Monitor CLI of the first device to output its Pairing Data
 
-Unlike the 'S' command, the 'P' command compresses all the Pairing Data into *base-64* chunks to make it easier to copy and paste as follows:
+Unlike the 's' command, the 'P' command compresses all the Pairing Data into *base-64* chunks to make it easier to copy and paste as follows:
 
 ```
 *** Pairing Data used for Cloning another Device
@@ -80,6 +69,28 @@ Finally, HomeSpan will ask you to confirm saving the new data.  Type either 'y' 
 If you type 'y', HomeSpan will save all of the new Pairing Data in the device's NVS and reboot.  Upon restarting, this second device will be a perfect clone of the first device and HomeKit should recognize it as if it were the original.  You will not need to re-pair the device or make any other changes to the Home App. 
   
 ❗Caution: Do NOT run two devices on the same HomeKit network with the same Pairing Data.  If you want to experiment by Cloning a working device onto a second device, make sure to unplug the first device before cloning the data onto the second device.  When you are finished experimenting, type 'H' into the CLI of one of the devices so the cloned Pairing Data will be erased and re-generated into something once again unique, allowing you to plug both devices in at the same time without conflict.
+
+### Programmatically Retrieving a Device's Pairing Data
+
+As an alternative to using the 'P' CLI Command to display a device's Pairing Data on the Serial Monitor, you can also retrieve this information programmatically from within your sketch using `homeSpan.getPairingInfo()` for the Accessory Pairing Data, and the `pairingInfo()` method implemented for the Controller linked list for each Controller's Pairing Data.  For example, the 'P' CLI Command itself uses these methods to retreive and display a device's Pairing Data as follows:
+
+```C++
+// Extract and print the same data Pairing Data that HomeSpan prints to the Serial Monitor when using the 'P' CLI command
+
+Serial.printf("\n*** Pairing Data used for Cloning another Device\n\n");
+
+char *buf;      // declare a character buffer into which the pairing data will be stored
+
+Serial.printf("Accessory data:  %s\n", homeSpan.getPairingInfo(&buf) );    // pass the pointer to your buffer - the function will return this same buffer filled with the Device Pairing Data
+free(buf);                                                                 // don't forget de-allocate the memory the getPairingInfo method allocated to store the Pairing Data
+
+for(auto it=homeSpan.controllerListBegin(); it!=homeSpan.controllerListEnd(); ++it){    // create an iterator to loop over all Paired Controllers
+  Serial.printf("Controller data: %s\n", it->getPairingInfo(&buf));                     // you can use the same buffer declared above
+  free(buf);                                                                            // always de-allocate the space allocated before using the buffer again
+}
+
+Serial.printf("\n*** End Pairing Data\n\n");
+```
   
 ---
 

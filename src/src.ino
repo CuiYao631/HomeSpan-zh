@@ -36,6 +36,9 @@ void setup() {
   homeSpan.enableOTA();
   homeSpan.enableWebLog(50).setWebLogFavicon();
   homeSpan.setCompileTime();
+  homeSpan.setStatusCallback([](HS_STATUS status){
+    WEBLOG("<span style=\"color:red\">HOMESPAN STATUS: %s</span>",homeSpan.statusString(status));
+    });
                     
   homeSpan.begin(Category::Lighting,"HomeSpan Basic");
 
@@ -45,5 +48,19 @@ void setup() {
     new Service::LightBulb();
       new Characteristic::On();
 
-  homeSpan.autoPoll();
+  auto [ status, duration] = homeSpan.getStatus();
+  WEBLOG("<span style=\"color:red\">INITIAL HOMESPAN STATUS: %s</span>",homeSpan.statusString(status));
+
+  // homeSpan.autoPoll();
+}
+
+void loop(){
+
+  homeSpan.poll();
+
+  auto [ status, duration] = homeSpan.getStatus();
+  if(status==HS_PAIRING_NEEDED && duration > 30){
+    Serial.printf("Warning: HomeSpan is not paired.\n");
+    homeSpan.resetStatusDuration();
+  }  
 }

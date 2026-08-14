@@ -20,7 +20,7 @@ HomeSpan is packaged as a standard Arduino library and can be installed either a
 
 #### Step 4: Acquire an ESP32 Board
 
-ESP32 development boards are widely available in different configurations from most electronics hobby sites, such as [Adafruit](https://www.adafruit.com) and [Sparkfun](https://www.sparkfun.com).  HomeSpan works with any ESP32 supported by the [Arduino-ESP32 Core](https://docs.espressif.com/projects/arduino-esp32/en/latest/getting_started.html#supported-soc-s), including the original ESP32, the ESP32-S2 and ESP32&#8209;S3, and the ESP32-C3.
+ESP32 development boards are widely available in different configurations from most electronics hobby sites, such as [Adafruit](https://www.adafruit.com) and [Sparkfun](https://www.sparkfun.com).  See the main HomeSpan [Welcome](../README.md) page for a list of ESP32 boards that are supported by HomeSpan.
 
 #### Step 5: Install any required USB Drivers
 
@@ -54,7 +54,7 @@ The Control Button should be installed between ground and any pin on the ESP32 t
 
 Similarly, the Status LED can be connected to any pin on the ESP32 that can serve as an output (and grounded through an appropriately-sized current-limiting resistor).  To inform HomeSpan of which pin you chose, you must call the method `homeSpan.setStatusPin(pin)` near the top of your sketch, else HomeSpan will assume a Status LED has **not** been installed.  Note some ESP32 boards have a built-in LED --- it is fine to use this for the Status LED if it is a simple on/off LED.  If your built-in LED is an RGB NeoPixel, or if you would like to use an external RGB NeoPixel for your Status LED, call the method `homeSpan.setStatusPixel(pin)` instead, in which case HomeSpan will use its NeoPixel driver to operate the status LED.
 
-Using the Control Button and Status LED to configure a standalone HomeSpan device, including starting HomeSpan's temporary WiFi network to configure the device's WiFi Credentials and HomeKit Setup Code, is fully explained in the [HomeSpan User Guide](UserGuide.md).
+Using the Control Button and Status LED to configure a standalone HomeSpan device, including starting HomeSpan's Setup Access Point to configure the device's WiFi Credentials and HomeKit Setup Code, is fully explained in the [HomeSpan User Guide](UserGuide.md).
 
 ## What Next?
 

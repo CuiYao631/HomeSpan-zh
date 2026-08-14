@@ -27,7 +27,7 @@ At runtime HomeSpan will create a global **object** named `homeSpan` (of type *c
 ---
 
 The following **optional** `homeSpan` methods override various HomeSpan initialization parameters used in `begin()`, and therefore **should** be called before `begin()` to take effect.
-Methods with a return type of `Span&` return a reference to `homeSpan` itself and can thus be chained together (e.g. `homeSpan.setControlPin(21).setStatusPin(13);`).  If a method is *not* called, HomeSpan uses the default parameter indicated below:
+Methods with a return type of `Span&` return a reference to `homeSpan` itself and can thus be chained together (e.g. `homeSpan.setControlPin(21).setStatusPin(13);`).  If a method is *not* called, HomeSpan uses the default parameters indicated below:
 
 * `Span& setControlPin(uint8_t pin, triggerType=PushButton::TRIGGER_ON_LOW)`
   * sets the ESP32 *pin* to use for the HomeSpan Control Button
@@ -41,6 +41,13 @@ Methods with a return type of `Span&` return a reference to `homeSpan` itself an
       * not available on ESP32-C3
   * as an alternative, you can set *triggerType* to any user-defined function of the form `boolean(int arg)` to utilize any device as a Control Button.  See **SpanButton** below for details
 
+* `Span& setControlTimes(uint32_t comTime, uint32_t resTime)`
+  * allows users to override HomeSpan's default hold times for the Control Button as follows:
+    * *comTime* - the hold time (in milliseconds) required to trigger HomeSpan to enter or exit the Device Command Mode
+    * *resTime* - the hold time (in milliseconds) required to trigger a Factory Reset
+  * HomeSpan's defaults require holding the Control Button for 3000ms to enter/exit the Device Command Mode and for 10000ms to trigger a Factory Reset
+  * if the *resTime* specified is not greater than the *comTime*, HomeSpan ignores the request
+ 
 * `int getControlPin()`
    * returns the pin number of the HomeSpan Control Button as set by `setControlPin(pin)`, or -1 if no pin has been set
   
@@ -221,6 +228,9 @@ The following **optional** `homeSpan` methods enable additional features and pro
  
 * `Span& useEthernet()`
   * forces HomeSpan to use Ethernet instead of WiFi, even if ETH has not yet been called or an Ethernet card has not been found prior to `homeSpan.begin()` being called
+
+* `boolean usingEthernet()`
+  * returns true if Ethernet is being used, else false if WiFi is being used
     
 * `Span& setPairCallback(void (*func)(boolean status))`
   * sets an optional user-defined callback function, *func*, to be called by HomeSpan upon completion of pairing to a controller (*status=true*) or unpairing from a controller (*status=false*)
@@ -234,6 +244,14 @@ The following **optional** `homeSpan` methods enable additional features and pro
   * the function *func* must be of type *void* and have no arguments
   * see the `controllerListBegin()` and `controllerListEnd()` methods for details on how to read the pairing data for each paired controller (*only needed to support certain advanced use cases*)
  
+* `std::pair< HS_STATUS, uint32_t > getStatus()`
+  * returns a std::pair containing:
+    * the current HomeSpan Status as an enum type [HS_STATUS](HS_STATUS.md)
+    * the duration (in seconds) since HomeSpan last changed to that Status
+
+* `void resetStatusDuration()`
+  * resets the duration timer returned by `getStatus()` above to zero
+
 * `Span& setStatusCallback(void (*func)(HS_STATUS status))`
   * sets an optional user-defined callback function, *func*, to be called by HomeSpan whenever its running state (e.g. WiFi Connecting, Pairing Needed...) changes in way that would alter the blinking pattern of the (optional) Status LED
   * if *func* is set, it will be called regardless of whether or not a Status LED has actually been defined
@@ -243,7 +261,7 @@ The following **optional** `homeSpan` methods enable additional features and pro
 * `char* statusString(HS_STATUS s)`
   * returns a pre-defined character string message representing *s*, which must be of enum type [HS_STATUS](HS_STATUS.md)
   * typically used in conjunction with `setStatusCallback()` above
-
+ 
 * `Span& setPollingCallback(void (*func)())`
   * sets an optional user-defined callback function, *func*, to be called by HomeSpan *one time* upon completing its first pass through the HomeSpan `poll()` function
   * the function *func* must be of type *void* and have no arguments
@@ -381,37 +399,24 @@ The following **optional** `homeSpan` methods provide additional run-time functi
   * example: `homeSpan.resetIID(100)` causes HomeSpan to set the IID to 100 for the very next Service or Characteristic defined within the current Accessory, and then increment the IID count going forward so that any Services or Characteristics subsequently defined (within the same Accessory) have IID=101, 102, etc.
   * note: calling this function only affects the IID generation for the current Accessory (the count will be reset to IID=1 upon instantiation of a new Accessory)
 
+* `const char *getPairingInfo(char **buf)`
+  * allocates memory to *buf*, a user-provided empty **pointer** to a `char *`, and fills it with HomeSpan's Accessory Device Pairing Data in the same base-64 format as provided by the 'P' CLI Command
+    * a pointer to *buf* itself is returned
+    * when *buf* is no longer needed, the user must call `free(buf)` to de-allocate the memory 
+  * see [Cloning Pairing Data](Cloning.md) for details
+    
 * `const_iterator controllerListBegin()` and `const_iterator controllerListEnd()`
-  * returns a *constant iterator* pointing to either the *beginning*, or the *end*, of an opaque linked list that stores all controller data
+  * returns a *constant iterator* pointing to either the *beginning*, or the *end*, of an opaque linked list that stores all Controller Pairing Data
   * iterators should be defined using the `auto` keyword as follows: `auto myIt=homeSpan.controllerListBegin();`
-  * controller data can be read from a de-referenced iterator using the following methods:    
-    * `const uint8_t *getID()` returns pointer to the 36-byte ID of the controller
-    * `const uint8_t *getLTPK()` returns pointer to the 32-byte Long Term Public Key of the controller
-    * `boolean isAdmin()` returns true if controller has admin permissions, else returns false
-  * <details><summary>click here for example code</summary><br>
-
-    ```C++
-    // Extract and print the same data about each controller that HomeSpan prints to the Serial Monitor when using the 's' CLI command
-    
-    Serial.printf("\nController Data\n");
-    
-    for(auto it=homeSpan.controllerListBegin(); it!=homeSpan.controllerListEnd(); ++it){  // loop over each controller
-    
-      Serial.printf("Admin=%d",it->isAdmin());    // indicate if controller has admin permissions
-
-      Serial.printf("  ID=");                     // print the 36-byte Device ID of the controller
-      for(int i=0;i<36;i++)
-        Serial.printf("%02X",it->getID()[i]);
-    
-      Serial.printf("  LTPK=");                   // print the 32-byte Long-Term Public Key of the controller)
-      for(int i=0;i<32;i++)
-        Serial.printf("%02X",it->getLTPK()[i]);
-    
-      Serial.printf("\n");
-    }
-    ```
-    </details>
-
+  * Controller data can be read from a de-referenced iterator using the following methods:    
+    * `const uint8_t *getID()` returns pointer to the 36-byte ID of the Controller
+    * `const uint8_t *getLTPK()` returns pointer to the 32-byte Long Term Public Key of the Controller
+    * `boolean isAdmin()` returns true if Controller has admin permissions, else returns false
+    * `const char *getPairingInfo(char **buf)` allocates memory to *buf*, a user-provided empty **pointer** to a `char *`, and fills it with the Controller's Pairing Data in the same base64 format as provided by the 'P' CLI Command
+      * a pointer to *buf* itself is returned
+      * when *buf* is no longer needed, the user must call `free(buf)` to de-allocate the memory 
+  * see [Cloning Pairing Data](Cloning.md) for details
+   
 * `Span& enableWatchdog(uint16_t nSeconds)`
   * creates a HomeSpan *task watchdog* that triggers a reboot of the device if the HomeSpan `poll()` function is not run at least once every *nSeconds*
     * *nSeconds* must be equal to, or greater than, the ESP32 default task watchdog timeout period specified in the IDF macro `CONFIG_ESP_TASK_WDT_TIMEOUT_S` (typically 5 seconds)
@@ -577,19 +582,16 @@ This is a **base class** from which all HomeSpan Characteristics are derived, an
 * `void setVal(value [,boolean notify])`
   * sets the value of a numerical-based Characteristic to *value*, and, if *notify* is set to true, notifies all HomeKit Controllers of the change.  The *notify* flag is optional and will be set to true if not specified.  Setting the *notify* flag to false allows you to update a Characateristic without notifying any HomeKit Controllers, which is useful for Characteristics that HomeKit automatically adjusts (such as a countdown timer) but will be requested from the Accessory if the Home App closes and is then re-opened
   * works with any integer, boolean, or floating-based numerical *value*, though HomeSpan will convert *value* into the appropriate type for each Characteristic (e.g. calling `setValue(5.5)` on an integer-based Characteristic results in *value*=5)
-  * throws a runtime warning if *value* is outside of the min/max range for the Characteristic, where min/max is either the HAP default, or any new min/max range set via a prior call to `setRange()`
+  * throws a runtime warning to both the Serial Monitor and the Web Log (when enabled) if *value* is outside of the min/max range for the Characteristic, where min/max is either the HAP default, or any new min/max range set via a prior call to `setRange()`
   * note that *value* is **not** restricted to being an increment of the step size; for example it is perfectly valid to call `setVal(43.5)` after calling `setRange(0,100,5)` on a floating-based Characteristic even though 43.5 does does not align with the step size specified.  The Home App will properly retain the value as 43.5, though it will round to the nearest step size increment (in this case 45) when used in a slider graphic (such as setting the temperature of a thermostat)
   * throws a runtime warning if called from within the `update()` routine of a **SpanService** *and* `isUpdated()` is *true* for the Characteristic (i.e. it is being updated at the same time via the Home App), *unless* you are changing the value of a Characteristic in response to a *write-response* request from HomeKit (typically used only for certain TLV-based Characteristics)
   * note this method can be used to update the value of a Characteristic even if the Characteristic is not permissioned for event notifications (EV), in which case the value stored by HomeSpan will be updated but the Home App will *not* be notified of the change
 
-
 * `SpanCharacteristic *setRange(min, max, step)`
   * overrides the default HAP range for a Characteristic with the *min*, *max*, and *step* parameters specified
-  * *step* is optional; if unspecified (or set to a non-positive number), the default HAP step size remains unchanged
+  * *step* is optional; if unspecified (or set to a non-positive number), the step size remains unchanged
   * works with any integer or floating-based parameters, though HomeSpan will recast the parameters into the appropriate type for each Characteristic (e.g. calling `setRange(50.5,70.3,0.5)` on an integer-based Characteristic results in *min*=50, *max*=70, and *step*=0)
-  * an error is thrown if:
-    * called on a Characteristic that does not suport range changes, or
-    * called more than once on the same Characteristic
+  * an error is thrown if called on a Characteristic that does not suport range changes
   * returns a pointer to the Characteristic itself so that the method can be chained during instantiation
   * example: `(new Characteristic::Brightness(50))->setRange(10,100,5);`
   
@@ -682,15 +684,19 @@ This is a **base class** from which all HomeSpan Characteristics are derived, an
   * example: `(new Characteristic::ConfiguredName("HDMI 1"))->removePerms(PW);`
 
 * `SpanCharacteristic *setDescription(const char *desc)`
-  * adds an optional description, *desc*, to a Characteristic, as described in HAP-R2 Table 6-3
-  * this field is generally used to provide information about custom Characteristics, but does not appear to be used in any way by the Home App
+  * adds or updates the HAP description field, *desc*, for a Characteristic, as described in HAP-R2 Table 6-3
+  * this field is generally used to modify the default description field HomeSpan automatically generates when creating a custom Characteristic
+  * the description field is required by the Eve App when displaying custom Characteristics it does not recognize (i.e. those that are neither Apple nor Eve Characteristics)
+  * this field does not otherwise appear to be used in any way by the Home App for Apple Characteristics
   * returns a pointer to the Characteristic itself so that the method can be chained during instantiation
   * example: `(new Characteristic::MyCustomChar())->setDescription("Tuner Frequency");`
 
 * `SpanCharacteristic *setUnit(const char *unit)`
-  * adds or overrides the *unit* for a Characteristic, as described in HAP-R2 Table 6-6
+  * adds or updates the unit definition, *unit*, of a Characteristic, as described in HAP-R2 Table 6-6
+  * recognized values are: "celsius", "percentage", "arcdegrees", "lux", and "seconds"
+  * the unit definition is optional and used only by the Eve App to modify the label shown when displaying custom Characteristics it does not recognize (i.e. those that are neither Apple nor Eve Characteristics)
   * returns a pointer to the Characteristic itself so that the method can be chained during instantiation
-  * example: `(new Characteristic::RotationSpeed())->setUnit("percentage");`
+  * example: `(new Characteristic::MyCustomChar())->setUnit("percentage");`
 
 * `uint32_t getIID()`
   * returns the IID of the Characteristic
@@ -819,7 +825,7 @@ Creates a custom Characteristic that can be added to any Service.  Custom Charac
 * *format* - for numerical Characteristics, specifies the number format.  Valid value are BOOL, UINT8, UINT16, UNIT32, UINT64, INT, and FLOAT.  Not applicable for the STRING, DATA, or TLV8 Characteristic macros
 * *defaultValue* - specifies the default value of the Characteristic when not defined during instantiation.  Not applicable for the DATA or TLV7 Characteristic macros.
 * *minValue* - specifies the default minimum range for a valid value, which may be able to be overriden by a call to `setRange()`.  Not applicable for the STRING, DATA or TLV8 Characteristic macros
-* *minValue* - specifies the default minimum range for a valid value, which may be able to be overriden by a call to `setRange()`.  Not applicable for the STRING, DATA or TLV8 Characteristic macros
+* *maxValue* - specifies the default maximum range for a valid value, which may be able to be overriden by a call to `setRange()`.  Not applicable for the STRING, DATA or TLV8 Characteristic macros
 * *staticRange* - set to *true* if *minValue* and *maxValue* are static and cannot be overridden with a call to `setRange()`.  Set to *false* if calls to `setRange()` are allowed.  Not applicable for the STRING, DATA or TLV8 Characteristic macros
 
 As an example, the first line below creates a custom Characteristic named "Voltage" with a UUID code that is recognized by the *Eve for HomeKit* app.  The parameters show that the Characteristic is read-only (PR) and notifications are enabled (EV).  The default range of allowed values is 0-240, with a default of 120.  The range *can* be overridden by subsequent calls to `setRange()`.  The second line below creates a custom read-only String-based Characteristic:
@@ -838,7 +844,7 @@ new Service::LightBulb();
 
 Note that Custom Characteristics must be created at the global level (i.e. not inside `setup()`) and prior to calling `homeSpan.begin()`
 
-> Advanced Tip 1: When presented with an unrecognized Custom Characteristic, *Eve for HomeKit* helpfully displays a *generic control* allowing you to interact with any Custom Characteristic you create in HomeSpan.  However, since Eve does not recognize the Characteristic, it will only render the generic control if the Characteristic includes a **description** field, which you can add to any Characteristic using the `setDescription()` method described above.  You may also want to use `setUnit()` and `setRange()` so that the Eve App displays a control with appropriate ranges for your Custom Characteristic.
+> Advanced Tip 1: When presented with an unrecognized Custom Characteristic, *Eve for HomeKit* helpfully displays a *generic control* allowing you to interact with any Custom Characteristic you create in HomeSpan.  The name of the Characteristic will be displayed as per the *name* argument above, and the allowed range will similarly be set according to the *minValue* and *maxValue* parameters.  You can override the display name of the Characteristic using the `setDescription()` method as well as override the range and units using the `setRange()` and `setUnit()` methods.
  
 > Advanced Tip 2: The DATA format is not currently used by any native Home App Characteristic, though it is part of the HAP-R2 specifications.  This format is included in HomeSpan because other applications, such as *Eve for HomeKit* do use these types of Characteristics to create functionality beyond that of the Home App, and are thus provided for advanced users to experiment.
  

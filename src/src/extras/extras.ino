@@ -25,19 +25,20 @@
  *  
  ********************************************************************************/
 
-#include "Pixel.h"
-
-Pixel p(1, "GRBW");
-Pixel::Color empty[7]={};
-Pixel::Color colors[7]={Pixel::RGB(0, 50, 0),  Pixel::RGB(50, 50, 0), Pixel::RGB(50, 0, 0) ,Pixel::RGB(0, 0, 0), Pixel::RGB(0, 0, 255), Pixel::RGB(0,0,0), Pixel::RGB(0,0,0,255)};
+#include "Blinker.h"
 
 void setup() {
-  for(int i=0;i<5;i++){
-    p.set(colors, 7);
-    delay(1000);
-    p.set(empty, 7);
-    delay(1000);    
-  }
+
+  Serial.begin(115200);
+  delay(2000);
+  Serial.printf("\n\nReady\n");
+
+  Blinker led(new GenericLED(26));
+
+  led.start(2000,0.5,3,2000);
+
+  while(1);    
+
 }
 
 void loop() {

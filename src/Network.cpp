@@ -49,7 +49,7 @@ using namespace Utils;
 void Network_HS::scan(){
 
   WiFi.scanDelete();
-  STATUS_UPDATE(start(LED_WIFI_SCANNING),HS_WIFI_SCANNING)
+  homeSpan.setStatus(HS_WIFI_SCANNING);
   int n=WiFi.scanNetworks();
 
   free(ssidList);
@@ -125,7 +125,7 @@ void Network_HS::apConfigure(){
   for(int i=0;i<numSSID;i++)
     LOG0("  %d) %s\n",i+1,ssidList[i]);
 
-  STATUS_UPDATE(start(LED_AP_STARTED),HS_AP_STARTED)    
+  homeSpan.setStatus(HS_AP_STARTED);  
 
   NetworkServer apServer(80);
   client=0;
@@ -148,7 +148,7 @@ void Network_HS::apConfigure(){
 
     if(homeSpan.controlButton && homeSpan.controlButton->triggered(9999,3000)){
       LOG0("\n*** Access Point Terminated.  Restarting...\n\n");
-      STATUS_UPDATE(start(LED_ALERT),HS_AP_TERMINATED)
+      homeSpan.setStatus(HS_AP_TERMINATED);
       homeSpan.controlButton->wait();
       homeSpan.reboot();
     }
@@ -165,7 +165,7 @@ void Network_HS::apConfigure(){
         else 
           LOG0("\n*** Access Point: Configuration Cancelled.");
         LOG0("  Restarting...\n\n");
-        STATUS_UPDATE(start(LED_ALERT),HS_AP_TERMINATED)
+        homeSpan.setStatus(HS_AP_TERMINATED);
         homeSpan.reboot();
       }
     }
@@ -349,7 +349,7 @@ void Network_HS::processRequest(char *body, char *formData){
     getFormValue(formData,"network",wifiData.ssid,MAX_SSID);
     getFormValue(formData,"pwd",wifiData.pwd,MAX_PWD);
 
-    STATUS_UPDATE(start(LED_WIFI_CONNECTING),HS_WIFI_CONNECTING)
+    homeSpan.setStatus(HS_WIFI_CONNECTING);
         
     responseBody+="<meta http-equiv = \"refresh\" content = \"" + String(homeSpan.wifiTimeCounter/1000) + "; url = /wifi-status\" />"
                   "<div class=\"status info\"><div class=\"progress\"><div class=\"progress-bar\"></div></div>"
@@ -408,7 +408,7 @@ void Network_HS::processRequest(char *body, char *formData){
       
     } else {
 
-      STATUS_UPDATE(start(LED_AP_CONNECTED),HS_AP_CONNECTED)
+      homeSpan.setStatus(HS_AP_CONNECTED);
           
       responseBody+="<div class=\"status success\">"
                     "<p>🎉 <b>WiFi 配网成功！</b></p>"
@@ -432,7 +432,7 @@ void Network_HS::processRequest(char *body, char *formData){
   if(!strncmp(body,"GET /homespan-landing ",22)){
     LOG1("In Landing Page...\n");
 
-    STATUS_UPDATE(start(LED_AP_CONNECTED),HS_AP_CONNECTED)
+    homeSpan.setStatus(HS_AP_CONNECTED);
     homeSpan.wifiTimeCounter.reset();
 
     responseBody+="<div class=\"status info\">"

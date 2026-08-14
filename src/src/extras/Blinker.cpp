@@ -56,6 +56,26 @@ void Blinker::blinkTask(void *arg){
 
 //////////////////////////////////////
 
+void Blinker::blinkTaskInverted(void *arg){
+
+  Blinker *b=(Blinker *)arg;
+
+  b->led->on();
+
+  for(;;){
+    delay(b->delayTime);
+    for(int i=0;i<b->nBlinks;i++){
+      b->led->off();
+      delay(b->onTime);
+      b->led->on();
+      delay(b->offTime);
+    }
+  }
+  
+}
+
+//////////////////////////////////////
+
 void Blinker::start(int period, float dutyCycle){
 
   start(period, dutyCycle, 1, 0);
@@ -63,18 +83,21 @@ void Blinker::start(int period, float dutyCycle){
 
 //////////////////////////////////////
 
-void Blinker::start(int period, float dutyCycle, int nBlinks, int delayTime){
+void Blinker::start(int period, float dutyCycle, int nBlinks, int delayTime, boolean invert){
 
   if(!led)
     return;
     
   onTime=dutyCycle*period;
   offTime=period-onTime;
-  this->delayTime=delayTime+offTime;
+  this->delayTime=delayTime;
   this->nBlinks=nBlinks;
 
-  stop();  
-  xTaskCreate( blinkTask, "BlinkTask", 1024, (void *)this, 2, &blinkHandle );
+  stop();
+  if(!invert)
+    xTaskCreate( blinkTask, "BlinkTask", 1024, (void *)this, 2, &blinkHandle );
+  else
+    xTaskCreate( blinkTaskInverted, "BlinkTask", 1024, (void *)this, 2, &blinkHandle );
 
   pauseTime=millis();
   isPaused=false;

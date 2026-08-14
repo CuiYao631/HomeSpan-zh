@@ -85,12 +85,6 @@ void HAPClient::init(){
     }
   }
   
-  LOG0("Accessory ID:      ");
-  charPrintRow(accessory.ID,17);
-  LOG0("                               LTPK: ");
-  hexPrintRow(accessory.LTPK,32);
-  LOG0("\n");
-
   printControllers();                                                         
 
   if(!nvs_get_blob(homeSpan.hapNVS,"HAPHASH",NULL,&len)){                 // if found HAP HASH structure
@@ -549,7 +543,7 @@ int HAPClient::postPairSetupURL(uint8_t *content, size_t len){
       
       LOG1("\n*** ACCESSORY PAIRED! ***\n");
 
-      STATUS_UPDATE(on(),HS_PAIRED)      
+      homeSpan.setStatus(HS_PAIRED);
             
       if(homeSpan.pairCallback)                             // if set, invoke user-defined Pairing Callback to indicate device has been paired
         homeSpan.pairCallback(true);
@@ -696,18 +690,14 @@ int HAPClient::postPairVerifyURL(uint8_t *content, size_t len){
       Controller *tPair;                                            // temporary pointer to Controller
       
       if(!(tPair=findController(*itIdentifier))){
-        LOG1("\n*** WARNING: Unrecognized Controller ID: ");
-        charPrintRow(*itIdentifier,hap_controller_IDBYTES,1);
-        LOG1("\n\n");
+        LOG1("\n*** WARNING: Unrecognized Controller ID: %s\n\n",char2String(*itIdentifier,hap_controller_IDBYTES).c_str());
         responseTLV.add(kTLVType_State,pairState_M4);               // set State=<M4>
         responseTLV.add(kTLVType_Error,tagError_Authentication);    // set Error=Authentication
         tlvRespond(responseTLV);                                    // send response to client
         return(0);
       }
 
-      LOG2("\n*** Verifying session with Controller ID: ");
-      charPrintRow(tPair->ID,hap_controller_IDBYTES,2);
-      LOG2("...\n");
+      LOG2("\n*** Verifying session with Controller ID: %s...\n",char2String(tPair->ID,hap_controller_IDBYTES).c_str());
 
       // concatenate Controller's Curve25519 Public Key (from previous step), Controller's Pairing ID, and Accessory's Curve25519 Public Key (from previous step) into iosDeviceInfo     
 
@@ -1118,9 +1108,9 @@ void HAPClient::getStatusURL(HAPClient *hapClient, void (*callBack)(const char *
     hapOut << "<link rel=\"icon\" href=\"" << homeSpan.webLog.faviconURL << "\" type=\"image/png\" />\n";
     
   hapOut << "<style>body {background-color:lightblue;} th, td {padding-right: 10px; padding-left: 10px; border:1px solid black;}" << homeSpan.webLog.css.c_str() << "</style></head>\n";
-  hapOut << "<body class=bod1><h2>" << homeSpan.displayName << "</h2>\n";
+  hapOut << "<body class=\"body bod1\"><h2>" << homeSpan.displayName << "</h2>\n";
   
-  hapOut << "<table class=tab1>\n";
+  hapOut << "<table class=\"infoTable tab1\">\n";
   hapOut << "<tr><td>Up Time:</td><td>" << uptime << "</td></tr>\n";
   hapOut << "<tr><td>Current Time:</td><td>" << clocktime << "</td></tr>\n";
   hapOut << "<tr><td>Boot Time:</td><td>" << homeSpan.webLog.bootTime << "</td></tr>\n"; 
@@ -1157,7 +1147,9 @@ void HAPClient::getStatusURL(HAPClient *hapClient, void (*callBack)(const char *
   mbedtls_version_get_string_full(mbtlsv);
   hapOut << "<tr><td>MbedTLS Version:</td><td>" << mbtlsv << "</td></tr>\n";
   
-  hapOut << "<tr><td>HomeKit Status:</td><td>" << (HAPClient::nAdminControllers()?"PAIRED":"NOT PAIRED") << "</td></tr>\n";   
+  auto [ stat, statTime] = homeSpan.getStatus();
+  hapOut << "<tr><td>HomeKit Status:</td><td>" << homeSpan.statusString(stat) << "</td></tr>\n";
+  hapOut << "<tr><td>Status Duration:</td><td>" << statTime << " sec</td></tr>\n";
   hapOut << "<tr><td>Max Log Entries:</td><td>" << homeSpan.webLog.maxEntries << "</td></tr>\n"; 
 
   if(homeSpan.weblogCallback){
@@ -1168,9 +1160,21 @@ void HAPClient::getStatusURL(HAPClient *hapClient, void (*callBack)(const char *
     
   hapOut << "</table>\n";
   hapOut << "<p></p>";
+
+  hapOut << "<table class=\"clientTable tab2\"><tr><th>Client #</th><th>IP Address</th><th>Controller</th></tr>\n";
+  for(auto it=homeSpan.hapList.begin(); it!=homeSpan.hapList.end(); ++it){
+    hapOut << "<tr><td>" << (*it).clientNumber << "</td><td>" << (*it).client.remoteIP().toString().c_str() << "</td><td>";
+    if((*it).cPair)          
+      hapOut << HAPClient::char2String((*it).cPair->getID(),36).c_str() << ((*it).cPair->isAdmin()?"  (admin)":"(regular)");
+    else
+      hapOut << "N/A";
+    hapOut << "</td></tr>\n";
+  }
+  hapOut << "</table>\n";
+  hapOut << "<p></p>";
   
   if(homeSpan.webLog.maxEntries>0){
-    hapOut << "<table class=tab2><tr><th>Entry</th><th>Up Time</th><th>Log Time</th><th>Client</th><th>Message</th></tr>\n";
+    hapOut << "<table class=\"logTable tab2\"><tr><th>Entry</th><th>Up Time</th><th>Log Time</th><th>Client</th><th>Message</th></tr>\n";
     int lastIndex=homeSpan.webLog.nEntries-homeSpan.webLog.maxEntries;
     if(lastIndex<0)
       lastIndex=0;
@@ -1329,35 +1333,29 @@ int HAPClient::receiveEncrypted(uint8_t *httpBuf, int messageSize){
 /////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
 
-void HAPClient::hexPrintColumn(const uint8_t *buf, int n, int minLogLevel){
+String HAPClient::hex2String(const uint8_t *buf, int n){
 
-  if(homeSpan.logLevel<minLogLevel)
-    return;
-  
-  for(int i=0;i<n;i++)
-    Serial.printf("%d) %02X\n",i,buf[i]);
+  String s="";
+  char c[3];
+
+  for(int i=0;i<n;i++){
+    sprintf(c,"%02X",buf[i]);
+    s+=c;
+  }
+
+  return(s);
 }
 
 //////////////////////////////////////
 
-void HAPClient::hexPrintRow(const uint8_t *buf, int n, int minLogLevel){
+String HAPClient::char2String(const uint8_t *buf, int n){
 
-  if(homeSpan.logLevel<minLogLevel)
-    return;
+  String s="";
 
   for(int i=0;i<n;i++)
-    Serial.printf("%02X",buf[i]);
-}
+    s+=(char)buf[i];
 
-//////////////////////////////////////
-
-void HAPClient::charPrintRow(const uint8_t *buf, int n, int minLogLevel){
-
-  if(homeSpan.logLevel<minLogLevel)
-    return;
-  
-  for(int i=0;i<n;i++)
-    Serial.printf("%c",buf[i]);
+  return(s);
 }
 
 //////////////////////////////////////
@@ -1393,18 +1391,14 @@ tagError HAPClient::addController(uint8_t *id, uint8_t *ltpk, boolean admin){
   if(!cTemp){                                            // new controller    
     if(controllerList.size()<MAX_CONTROLLERS){
       controllerList.emplace_back(id,ltpk,admin);        // create and store data
-      LOG2("\n*** Added Controller: ");
-      charPrintRow(id,hap_controller_IDBYTES,2);
-      LOG2(admin?" (admin)\n\n":" (regular)\n\n");
+      LOG2("\n*** Added Controller: %s %s\n\n",char2String(id,hap_controller_IDBYTES).c_str(),admin?"(admin)":"(regular)");
       saveControllers();
     } else {
       LOG0("\n*** ERROR: Can't pair more than %d Controllers\n\n",MAX_CONTROLLERS);
       err=tagError_MaxPeers;
     }    
   } else if(!memcmp(ltpk,cTemp->LTPK,crypto_sign_PUBLICKEYBYTES)){   // existing controller with same LTPK
-    LOG2("\n*** Updated Controller: ");
-    charPrintRow(id,hap_controller_IDBYTES,2);
-    LOG2(" from %s to %s\n\n",cTemp->admin?"(admin)":"(regular)",admin?"(admin)":"(regular)");
+    LOG2("\n*** Updated Controller: %s from %s to %s\n\n",char2String(id,hap_controller_IDBYTES).c_str(),cTemp->admin?"(admin)":"(regular)",admin?"(admin)":"(regular)");
     cTemp->admin=admin;
     saveControllers();    
   } else {
@@ -1422,15 +1416,11 @@ void HAPClient::removeController(uint8_t *id){
   auto it=std::find_if(controllerList.begin(), controllerList.end(), [id](const Controller& cTemp){return(!memcmp(cTemp.ID,id,hap_controller_IDBYTES));});
 
   if(it==controllerList.end()){
-    LOG2("\n*** Request to Remove Controller Ignored - Controller Not Found: ");
-    charPrintRow(id,hap_controller_IDBYTES,2);
-    LOG2("\n");
+    LOG2("\n*** Request to Remove Controller Ignored - Controller Not Found: %s\n",char2String(id,hap_controller_IDBYTES).c_str());
     return;
   }
 
-  LOG1("\n*** Removing Controller: ");
-  charPrintRow((*it).ID,hap_controller_IDBYTES,2);
-  LOG1((*it).admin?" (admin)\n":" (regular)\n");
+  LOG1("\n*** Removing Controller: %s %s\n",char2String((*it).ID,hap_controller_IDBYTES).c_str(),(*it).admin?"(admin)":"(regular)");
   
   tearDown((*it).ID);         // teardown any connections using this Controller
   controllerList.erase(it);   // remove Controller
@@ -1442,7 +1432,7 @@ void HAPClient::removeController(uint8_t *id){
     tearDown(NULL);                                              // teardown all remaining connections
     controllerList.clear();                                      // remove all remaining Controllers
     mdns_service_txt_item_set("_hap","_tcp","sf","1");           // set Status Flag = 1 (Table 6-8)
-    STATUS_UPDATE(start(LED_PAIRING_NEEDED),HS_PAIRING_NEEDED)   // set optional Status LED
+    homeSpan.resetStatus();                                      // reset hsStatus and StatusLED
     if(homeSpan.pairCallback)                                    // if set, invoke user-defined Pairing Callback to indicate device has been un-paired
       homeSpan.pairCallback(false);    
   }
@@ -1464,23 +1454,17 @@ void HAPClient::tearDown(uint8_t *id){
 
 //////////////////////////////////////
 
-void HAPClient::printControllers(int minLogLevel){
+void HAPClient::printControllers(){
 
-  if(homeSpan.logLevel<minLogLevel)
-    return;
+  LOG0("Accessory ID:      %s                               LTPK: %s\n",char2String(accessory.ID,17).c_str(),hex2String(accessory.LTPK,32).c_str());
 
   if(controllerList.empty()){
-    Serial.printf("No Paired Controllers\n");
+    LOG0("No Paired Controllers\n");
     return;    
   }
   
-  for(auto it=controllerList.begin();it!=controllerList.end();it++){
-    Serial.printf("Paired Controller: ");
-    charPrintRow((*it).ID,hap_controller_IDBYTES);
-    Serial.printf("%s  LTPK: ",(*it).admin?"   (admin)":" (regular)");
-    hexPrintRow((*it).LTPK,crypto_sign_PUBLICKEYBYTES);
-    Serial.printf("\n");    
-  }
+  for(auto it=controllerList.begin();it!=controllerList.end();it++)
+    LOG0("Paired Controller: %s %s  LTPK: %s\n",char2String((*it).ID,hap_controller_IDBYTES).c_str(),(*it).admin?"  (admin)":"(regular)",hex2String((*it).LTPK,crypto_sign_PUBLICKEYBYTES).c_str());
 }
 
 //////////////////////////////////////
@@ -1513,21 +1497,19 @@ Nonce::Nonce(){
 //////////////////////////////////////
 
 void Nonce::zero(){
-  memset(x,0,12);
+  n=0;
 }
 
 //////////////////////////////////////
 
-uint8_t *Nonce::get(){
-  return(x);
+const uint8_t *Nonce::get(){
+  return(z);
 }
 
 //////////////////////////////////////
 
 void Nonce::inc(){
-  x[4]++;
-  if(x[4]==0)
-    x[5]++;
+  n++;
 }
 
 //////////////////////////////////////
